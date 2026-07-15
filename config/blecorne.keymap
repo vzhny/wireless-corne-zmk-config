@@ -43,6 +43,17 @@
         };
     };
 
+    conditional_layers {
+        compatible = "zmk,conditional-layers";
+        /* Holding NUM (mo 2) + SYM (lt 4) simultaneously activates ADMIN.
+         * Costs no dedicated thumb. Mac toggle in ADMIN resets on power cycle —
+         * keyboard always boots in Windows mode, which is intended. */
+        admin {
+            if-layers = <2 4>;
+            then-layer = <5>;
+        };
+    };
+
     keymap {
         compatible = "zmk,keymap";
 
@@ -101,6 +112,20 @@
                 &trans  &trans  &trans  &trans  &trans  &trans   &trans  &trans  &trans  &trans  &trans  &trans
                 &trans  &trans  &trans  &trans  &trans  &trans   &trans  &trans  &trans  &trans  &trans  &trans
                                         &trans  &trans  &trans   &trans  &trans  &trans
+            >;
+        };
+
+        /* ADMIN — conditional: NUM(2) + SYM(4) held simultaneously.
+         * Top row left: BT device select 0-3, BT clear.
+         * Top row right: sys_reset, bootloader.
+         * Homerow left A: Mac mods toggle (&tog 1). Homerow right H: studio unlock.
+         * Mac toggle is runtime-only — always off on power cycle (Windows default). */
+        admin_layer {
+            bindings = <
+                &trans  &bt BT_SEL 0  &bt BT_SEL 1  &bt BT_SEL 2  &bt BT_SEL 3  &bt BT_CLR   &sys_reset  &bootloader  &trans  &trans  &trans  &trans
+                &trans  &tog 1        &trans        &trans        &trans        &trans       &studio_unlock &trans  &trans  &trans  &trans  &trans
+                &trans  &trans        &trans        &trans        &trans        &trans       &trans      &trans       &trans  &trans  &trans  &trans
+                                                    &trans        &trans        &trans       &trans      &trans       &trans
             >;
         };
     };
