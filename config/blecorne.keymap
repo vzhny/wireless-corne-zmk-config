@@ -54,5 +54,18 @@
                                                 &none       &mo 2  &mt LSHFT SPACE   &mt RSHFT BSPC   &none       &none
             >;
         };
+
+        /* MAC overlay — swaps Ctrl↔GUI on homerow only; everything else transparent.
+         * Activated via &tog 1 from ADMIN. &tog state is runtime-only (not written
+         * to NVS), so this layer is always off on power cycle.
+         * Layer 1 < NUM(2)/NAV(3)/SYM(4): those layers always win on scan. */
+        mac_layer {
+            bindings = <
+                &trans  &trans       &trans        &trans  &trans  &trans   &trans  &trans  &trans  &trans        &trans         &trans
+                &trans  &hml LGUI A  &hml LCTRL S  &trans  &trans  &trans   &trans  &trans  &trans  &hmr RCTRL L  &hmr RGUI SEMI &trans
+                &trans  &trans       &trans        &trans  &trans  &trans   &trans  &trans  &trans  &trans        &trans         &trans
+                                                   &trans  &trans  &trans   &trans  &trans  &trans
+            >;
+        };
     };
 };
