@@ -53,6 +53,11 @@
             if-layers = <2 6>;
             then-layer = <5>;
         };
+
+        admin_leftonly {
+            if-layers = <2 3>;
+            then-layer = <5>;
+        };
     };
 
     combos {
