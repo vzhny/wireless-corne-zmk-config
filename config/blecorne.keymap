@@ -67,5 +67,41 @@
                                                    &trans  &trans  &trans   &trans  &trans  &trans
             >;
         };
+
+        /* NUM — left: shifted 1-5 top row, shifted 6-0 homerow; right: &trans */
+        num_layer {
+            bindings = <
+                &trans  &kp EXCL   &kp AT    &kp HASH   &kp DLLR  &kp PRCNT   &trans  &trans  &trans  &trans  &trans  &trans
+                &trans  &kp CARET  &kp AMPS  &kp ASTRK  &kp LPAR  &kp RPAR    &trans  &trans  &trans  &trans  &trans  &trans
+                &trans  &trans     &trans    &trans     &trans    &trans      &trans  &trans  &trans  &trans  &trans  &trans
+                                             &trans     &trans    &trans      &trans  &trans  &trans
+            >;
+        };
+
+        /* NAV — right homerow: hjkl arrows; right top: home/pgup/pgdn/end;
+         * right bottom: Ctrl+Left/Right word motions; left: del + vol */
+        nav_layer {
+            bindings = <
+                &trans  &trans    &trans  &trans        &trans        &trans        &kp HOME     &kp PG_UP  &kp PG_DN  &kp END      &trans  &trans
+                &trans  &kp DEL   &trans  &trans        &kp C_VOL_DN  &kp C_VOL_UP  &kp LEFT     &kp DOWN   &kp UP     &kp RIGHT    &trans  &trans
+                &trans  &trans    &trans  &trans        &trans        &trans        &kp LC(LEFT)  &trans     &trans     &kp LC(RIGHT) &trans  &trans
+                                          &trans        &trans        &trans        &trans        &trans     &trans
+            >;
+        };
+
+        /* SYM — scaffold; fill per next prompt
+         * Position reference (inner keys only):
+         *   row0:  [1] [2] [3] [4] [5]   [6] [7] [8] [9] [10]
+         *   row1: [13][14][15][16][17]  [18][19][20][21][22]
+         *   row2: [25][26][27][28][29]  [30][31][32][33][34←SYM]
+         *   thumb:[37←NUM][38]          [39][40]                  */
+        sym_layer {
+            bindings = <
+                &trans  &trans  &trans  &trans  &trans  &trans   &trans  &trans  &trans  &trans  &trans  &trans
+                &trans  &trans  &trans  &trans  &trans  &trans   &trans  &trans  &trans  &trans  &trans  &trans
+                &trans  &trans  &trans  &trans  &trans  &trans   &trans  &trans  &trans  &trans  &trans  &trans
+                                        &trans  &trans  &trans   &trans  &trans  &trans
+            >;
+        };
     };
 };
