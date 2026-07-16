@@ -62,6 +62,14 @@
         };
     };
 
+    /* Switched VCC on 8-pin display header — P0.31 gates power to Pin 5 */
+    ext_power: ext_power {
+        compatible = "zmk,ext-power-gpio";
+        #gpio-cells = <0>;
+        init-delay-ms = <50>;
+        control-gpios = <&gpio0 31 GPIO_ACTIVE_HIGH>;
+    };
+
     vbatt: vbatt {
         compatible = "zmk,battery-voltage-divider";
         io-channels = <&adc 2>;
