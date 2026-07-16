@@ -16,6 +16,7 @@
 
 void rotate_canvas(lv_obj_t *canvas);
 void draw_battery(lv_obj_t *canvas, int x, int y, uint8_t level, bool charging);
+void draw_glyph(lv_obj_t *canvas, int x, int y, const lv_image_dsc_t *glyph, bool active);
 
 void init_label_dsc(lv_draw_label_dsc_t *dsc, lv_color_t color, const lv_font_t *font);
 void init_rect_dsc(lv_draw_rect_dsc_t *dsc, lv_color_t color);

@@ -11,6 +11,7 @@
 #include <zmk/keymap.h>
 
 #include "util.h"
+#include "glyphs.h"
 #include "blecorne_peripheral.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -21,6 +22,7 @@ struct peripheral_state {
     uint8_t battery_level;
     bool    connected;
     uint8_t active_layer;
+    uint8_t r_mods; /* R-mod nibble: bit0=RCtrl, bit1=RShift, bit2=RAlt, bit3=RGUI */
 };
 
 /* ── Canvases ────────────────────────────────────────────────────────── */
@@ -33,7 +35,7 @@ static uint8_t cbuf_top[CANVAS_BUF_SIZE];
 static uint8_t cbuf_mid[CANVAS_BUF_SIZE];
 static uint8_t cbuf_bot[CANVAS_BUF_SIZE];
 
-/* ── Layer names (mirrored from central) ─────────────────────────────── */
+/* ── Layer names ─────────────────────────────────────────────────────── */
 
 static const char *layer_names[] = {
     "Base", "Mac", "Num", "Nav", "Sym", "Admin", "Func",
@@ -42,10 +44,7 @@ static const char *layer_names[] = {
 #define LAYER_NAME_COUNT ARRAY_SIZE(layer_names)
 
 static const char *get_layer_name(uint8_t idx) {
-    if (idx < LAYER_NAME_COUNT) {
-        return layer_names[idx];
-    }
-    return "???";
+    return (idx < LAYER_NAME_COUNT) ? layer_names[idx] : "???";
 }
 
 /* ── Draw helpers ────────────────────────────────────────────────────── */
@@ -69,15 +68,36 @@ static void render_layer_canvas(struct peripheral_state *state) {
     rotate_canvas(canvas_bot);
 }
 
-static void render_status_canvas(struct peripheral_state *state) {
+static void render_mid_canvas(struct peripheral_state *state) {
     clear_canvas(canvas_mid);
 
     lv_draw_label_dsc_t lbl;
     init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_16);
 
-    const char *conn_str = state->connected ? "Connected" : "No Link";
-    /* Centre text vertically in canvas */
-    canvas_draw_text(canvas_mid, 0, 26, CANVAS_SIZE, &lbl, conn_str);
+    /* Connection status near top of strip (canvas x=5) */
+    const char *conn_str = state->connected ? "LINK" : "----";
+    canvas_draw_text(canvas_mid, 5, 0, CANVAS_SIZE, &lbl, conn_str);
+
+    /* R-modifier row (canvas x=27): ⇧ Shift | ⌃ Ctrl | GUI | Alt
+     * r_mods bits: 0=RCtrl, 1=RShift, 2=RAlt, 3=RGUI */
+    bool is_mac = (state->active_layer == 1);
+    uint8_t r = state->r_mods;
+    bool shift_active = !!(r & BIT(1));
+    bool ctrl_active  = !!(r & BIT(0));
+    bool gui_active   = !!(r & BIT(3));
+    bool alt_active   = !!(r & BIT(2));
+
+    int gx = 2, gy = 27, step = 17;
+
+    draw_glyph(canvas_mid, gx,          gy, &glyph_sft,  shift_active);
+    draw_glyph(canvas_mid, gx + step,   gy, &glyph_ctrl, ctrl_active);
+    if (is_mac) {
+        draw_glyph(canvas_mid, gx + step * 2, gy, &glyph_cmd, gui_active);
+        draw_glyph(canvas_mid, gx + step * 3, gy, &glyph_opt, alt_active);
+    } else {
+        draw_glyph(canvas_mid, gx + step * 2, gy, &glyph_win, gui_active);
+        draw_glyph(canvas_mid, gx + step * 3, gy, &glyph_alt, alt_active);
+    }
 
     rotate_canvas(canvas_mid);
 }
@@ -100,6 +120,15 @@ static void render_battery_canvas(struct peripheral_state *state) {
 
 static struct peripheral_state widget_state;
 
+/* ── Public modifier update (called by modifier_sync_peripheral) ─────── */
+
+void blecorne_peripheral_update_mods(uint8_t r_mods) {
+    widget_state.r_mods = r_mods;
+    ZMK_DISPLAY_LOCK();
+    render_mid_canvas(&widget_state);
+    ZMK_DISPLAY_UNLOCK();
+}
+
 /* ── Event listeners ─────────────────────────────────────────────────── */
 
 static int battery_event_cb(const zmk_event_t *eh) {
@@ -117,7 +146,7 @@ static int battery_event_cb(const zmk_event_t *eh) {
 static int split_event_cb(const zmk_event_t *eh) {
     widget_state.connected = zmk_split_bt_peripheral_is_connected();
     ZMK_DISPLAY_LOCK();
-    render_status_canvas(&widget_state);
+    render_mid_canvas(&widget_state);
     ZMK_DISPLAY_UNLOCK();
     return ZMK_EV_EVENT_BUBBLE;
 }
@@ -130,6 +159,7 @@ static int layer_event_cb(const zmk_event_t *eh) {
     widget_state.active_layer = zmk_keymap_highest_layer_active();
     ZMK_DISPLAY_LOCK();
     render_layer_canvas(&widget_state);
+    render_mid_canvas(&widget_state); /* layer affects Mac vs Win glyph set */
     ZMK_DISPLAY_UNLOCK();
     return ZMK_EV_EVENT_BUBBLE;
 }
@@ -171,9 +201,10 @@ int blecorne_peripheral_widget_init(struct blecorne_peripheral_widget *widget,
     widget_state.battery_level = zmk_battery_state_of_charge();
     widget_state.connected     = zmk_split_bt_peripheral_is_connected();
     widget_state.active_layer  = zmk_keymap_highest_layer_active();
+    widget_state.r_mods        = 0;
 
     render_layer_canvas(&widget_state);
-    render_status_canvas(&widget_state);
+    render_mid_canvas(&widget_state);
     render_battery_canvas(&widget_state);
 
     return 0;

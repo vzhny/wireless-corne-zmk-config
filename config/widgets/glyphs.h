@@ -18,3 +18,6 @@ extern const lv_image_dsc_t glyph_opt;
 
 /* ⎇  Alt (upward arrow with base bar) */
 extern const lv_image_dsc_t glyph_alt;
+
+/* ⇧  Shift (solid upward arrow with stem and base) */
+extern const lv_image_dsc_t glyph_sft;

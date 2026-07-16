@@ -85,3 +85,12 @@ void canvas_draw_img(lv_obj_t *canvas, int x, int y, const void *src,
                      lv_draw_image_dsc_t *dsc) {
     lv_canvas_draw_image(canvas, x, y, src, dsc);
 }
+
+void draw_glyph(lv_obj_t *canvas, int x, int y,
+                const lv_image_dsc_t *glyph, bool active) {
+    lv_draw_image_dsc_t img_dsc;
+    lv_draw_image_dsc_init(&img_dsc);
+    img_dsc.recolor     = active ? LVGL_FOREGROUND : lv_color_make(0xAA, 0xAA, 0xAA);
+    img_dsc.recolor_opa = active ? LV_OPA_COVER : LV_OPA_50;
+    canvas_draw_img(canvas, x, y, glyph, &img_dsc);
+}

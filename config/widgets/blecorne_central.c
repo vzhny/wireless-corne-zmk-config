@@ -77,16 +77,6 @@ static void clear_canvas(lv_obj_t *canvas) {
     canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &r);
 }
 
-/* Draw a glyph image at (x,y); dim out if inactive */
-static void draw_glyph(lv_obj_t *canvas, int x, int y,
-                        const lv_image_dsc_t *glyph, bool active) {
-    lv_draw_image_dsc_t img_dsc;
-    lv_draw_image_dsc_init(&img_dsc);
-    img_dsc.recolor = active ? LVGL_FOREGROUND : lv_color_make(0xAA, 0xAA, 0xAA);
-    img_dsc.recolor_opa = active ? LV_OPA_COVER : LV_OPA_50;
-    canvas_draw_img(canvas, x, y, glyph, &img_dsc);
-}
-
 /* ── Canvas renderers ────────────────────────────────────────────────── */
 
 static void render_layer_canvas(struct central_state *state) {
@@ -110,46 +100,27 @@ static void render_layer_canvas(struct central_state *state) {
 static void render_mod_canvas(struct central_state *state) {
     clear_canvas(canvas_mid);
 
-    /* Determine platform from active layer: layer 1 = Mac */
     bool is_mac = (state->active_layer == 1);
     uint32_t mods = state->mods;
 
-    bool ctrl_active  = !!(mods & MOD_CTRL);
-    bool shift_active = !!(mods & MOD_SHIFT);
-    bool alt_active   = !!(mods & MOD_ALT);
-    bool gui_active   = !!(mods & MOD_GUI);
+    /* Left-side modifier bits only */
+    bool shift_active = !!(mods & MOD_LSHIFT);
+    bool ctrl_active  = !!(mods & MOD_LCTRL);
+    bool gui_active   = !!(mods & MOD_LGUI);
+    bool alt_active   = !!(mods & MOD_LALT);
 
-    /* Glyph row layout in canvas space (before 270° rotation).
-     * Canvas is 68×68. We place 3 glyphs of 14px wide with 5px gaps.
-     * Total width = 3*14 + 2*5 = 52px. Left offset = (68-52)/2 = 8.
-     * Row vertically centred: y = (68-14)/2 = 27.
-     *
-     * After 270° CW rotation this canvas → physical middle strip (68px wide).
-     * Canvas x → physical y (top→bottom), canvas y → physical x (right→left).
-     * So the glyph row (canvas y=27..41) maps to physical x=27..41.
-     * Physical strip is 68px wide so this centres the row nicely.
-     */
-    int gx = 8;
-    int gy = 27;
-    int step = 19; /* 14px glyph + 5px gap */
+    /* 4 glyphs: ⇧ Shift | ⌃ Ctrl | GUI | Alt
+     * 4×14 + 3×3 = 65px → gx=2, step=17 centres in 68px canvas */
+    int gx = 2, gy = 27, step = 17;
 
+    draw_glyph(canvas_mid, gx,          gy, &glyph_sft,  shift_active);
+    draw_glyph(canvas_mid, gx + step,   gy, &glyph_ctrl, ctrl_active);
     if (is_mac) {
-        /* Mac: ⌃ Ctrl | ⌘ Cmd | ⌥ Option */
-        draw_glyph(canvas_mid, gx,          gy, &glyph_ctrl, ctrl_active);
-        draw_glyph(canvas_mid, gx + step,   gy, &glyph_cmd,  gui_active);
-        draw_glyph(canvas_mid, gx + step*2, gy, &glyph_opt,  alt_active);
+        draw_glyph(canvas_mid, gx + step * 2, gy, &glyph_cmd, gui_active);
+        draw_glyph(canvas_mid, gx + step * 3, gy, &glyph_opt, alt_active);
     } else {
-        /* Win/default: ⌃ Ctrl | ⊞ Win | ⎇ Alt */
-        draw_glyph(canvas_mid, gx,          gy, &glyph_ctrl, ctrl_active);
-        draw_glyph(canvas_mid, gx + step,   gy, &glyph_win,  gui_active);
-        draw_glyph(canvas_mid, gx + step*2, gy, &glyph_alt,  alt_active);
-    }
-
-    /* Shift indicator: small text label below glyph row */
-    if (shift_active) {
-        lv_draw_label_dsc_t lbl;
-        init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_16);
-        canvas_draw_text(canvas_mid, 16, gy + 18, 36, &lbl, "SFT");
+        draw_glyph(canvas_mid, gx + step * 2, gy, &glyph_win, gui_active);
+        draw_glyph(canvas_mid, gx + step * 3, gy, &glyph_alt, alt_active);
     }
 
     rotate_canvas(canvas_mid);
