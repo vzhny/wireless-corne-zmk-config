@@ -137,7 +137,7 @@
         compatible = "zmk,keymap";
 
         default_layer {
-            display-name = "Base";
+            display-name = "Base (Win)";
             bindings = <
 &none          &kp Q         &kp W        &kp E        &kp R  &kp T            &kp Y           &kp U  &kp I        &kp O        &kp P            &none
 &kp BACKSPACE  &hml LCTRL A  &hml LGUI S  &hml LALT D  &kp F  &kp G            &kp H           &kp J  &hmr RALT K  &hmr RGUI L  &hmr RCTRL SEMI  &kp ENTER
@@ -152,7 +152,7 @@
          * Layer 1 < NUM(2)/NAV(3)/SYM(4): those layers always win on scan. */
 
         mac_layer {
-            display-name = "MAC";
+            display-name = "Base (Mac)";
             bindings = <
 &trans  &trans       &trans        &trans  &trans  &trans  &trans  &trans  &trans  &trans        &trans          &trans
 &trans  &hml LGUI A  &hml LCTRL S  &trans  &trans  &trans  &trans  &trans  &trans  &hmr RCTRL L  &hmr RGUI SEMI  &trans
@@ -164,7 +164,7 @@
         /* NUM — left: shifted 1-5 top row, shifted 6-0 homerow; right: &trans */
 
         num_layer {
-            display-name = "NUM";
+            display-name = "Num";
             bindings = <
 &trans  &kp NUMBER_1  &kp NUMBER_2  &kp NUMBER_3  &kp NUMBER_4  &kp N5        &trans  &trans  &trans  &trans  &trans  &trans
 &trans  &kp NUMBER_6  &kp N7        &kp N8        &kp NUMBER_9  &kp NUMBER_0  &trans  &trans  &trans  &trans  &trans  &trans
@@ -177,7 +177,7 @@
          * right bottom: Ctrl+Left/Right word motions; left: del + vol */
 
         nav_layer {
-            display-name = "NAV";
+            display-name = "Nav";
             bindings = <
 &trans  &trans  &trans      &trans  &trans        &trans        &kp HOME  &kp PAGE_DOWN  &kp PAGE_UP  &kp END    &trans  &trans
 &trans  &trans  &trans      &trans  &kp C_VOL_DN  &kp C_VOL_UP  &kp LEFT  &kp DOWN       &kp UP       &kp RIGHT  &trans  &trans
@@ -194,7 +194,7 @@
          *   thumb:[37←NUM][38]          [39][40]                  */
 
         sym_layer {
-            display-name = "SYM";
+            display-name = "Sym";
             bindings = <
 &trans  &kp MINUS      &kp EQUAL  &kp LEFT_PARENTHESIS  &kp RIGHT_PARENTHESIS  &kp GRAVE             &trans  &trans  &trans  &trans  &trans  &trans
 &trans  &kp AMPERSAND  &kp PIPE   &kp LEFT_BRACE        &kp RIGHT_BRACE        &kp TILDE             &trans  &trans  &trans  &trans  &trans  &trans
@@ -220,7 +220,7 @@
         };
 
         func_layer {
-            display-name = "FUNC";
+            display-name = "Func";
             bindings = <
 &trans  &kp F1   &kp F2   &kp F3  &kp F4  &kp F5   &trans  &trans  &trans  &trans  &trans  &trans
 &trans  &kp F6   &kp F7   &kp F8  &kp F9  &kp F10  &trans  &trans  &trans  &trans  &trans  &trans
