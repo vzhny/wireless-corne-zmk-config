@@ -89,34 +89,33 @@ static void clear_canvas(lv_obj_t *canvas) {
 
 /* canvas_bot (physical top strip, 24 px visible = canvas rows 0..23)
  *
- * Layout (canvas space, all rows visible 0..23):
- *   y=0..13  : BT glyph at x=0  (14×14, rows 12-13 = white = no conflict)
- *   y=1..10  : battery shell at x=16 (22×10, fits inside first 12 px line)
- *   y=0..11  : battery % text at x=40  (Montserrat 12, 12 px height)
- *   y=13..24 : BT profile "BT 0"-"BT 3" at x=0  (Montserrat 12, bottom 1 row clips)
+ * Layout (canvas space):
+ *   Physical top row    → canvas y=13..23: BT glyph x=0, battery x=16, % x=40
+ *   Physical bottom row → canvas y=0..11:  BT profile "BT 0"-"BT 3" x=0
+ *
+ * 270° CW rotation: canvas_cy=0 → physical_y=23 (strip bottom),
+ *                   canvas_cy=23 → physical_y=0  (strip top).
+ * Higher canvas y = higher up on physical display.
  */
 static void render_status_canvas(struct central_state *state) {
     clear_canvas(canvas_bot);
 
-    /* BT indicator: solid when connected, flash-on phase when searching */
-    if (bt_connected || bt_flash_on) {
-        draw_glyph(canvas_bot, 0, 0, &glyph_bt, true);
-    }
-
-    /* Battery icon 22×10 at (16, 1) */
-    draw_battery(canvas_bot, 16, 1, state->battery_level, state->charging);
-
-    /* Battery percentage text */
-    char batt_buf[6];
-    snprintf(batt_buf, sizeof(batt_buf), "%d%%", state->battery_level);
     lv_draw_label_dsc_t lbl;
     init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_12);
-    canvas_draw_text(canvas_bot, 40, 0, 28, &lbl, batt_buf);
 
-    /* BT profile row: "BT 0" .. "BT 3" */
+    /* Physical top row (canvas y≥13): BT indicator left, battery+% right */
+    if (bt_connected || bt_flash_on) {
+        draw_glyph(canvas_bot, 0, 13, &glyph_bt, true);
+    }
+    draw_battery(canvas_bot, 16, 14, state->battery_level, state->charging);
+    char batt_buf[6];
+    snprintf(batt_buf, sizeof(batt_buf), "%d%%", state->battery_level);
+    canvas_draw_text(canvas_bot, 40, 13, 28, &lbl, batt_buf);
+
+    /* Physical bottom row (canvas y=0..11): BT profile left */
     char profile_buf[6];
     snprintf(profile_buf, sizeof(profile_buf), "BT %d", state->ble_profile);
-    canvas_draw_text(canvas_bot, 0, 13, 68, &lbl, profile_buf);
+    canvas_draw_text(canvas_bot, 0, 0, 68, &lbl, profile_buf);
 
     rotate_canvas(canvas_bot);
 }
@@ -166,6 +165,7 @@ static void render_layer_canvas(struct central_state *state) {
 
     lv_draw_label_dsc_t lbl;
     init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_16);
+    lbl.align = LV_TEXT_ALIGN_CENTER;
     canvas_draw_text(canvas_top, 0, 26, CANVAS_SIZE, &lbl,
                      get_layer_name(state->active_layer));
 

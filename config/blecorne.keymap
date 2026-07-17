@@ -168,7 +168,7 @@
          * Activated via &tog 2 from ADMIN. */
 
         colemak_win_layer {
-            display-name = "Colemak (Win)";
+            display-name = "Colemak-DH (Win)";
             bindings = <
 &none          &kp Q         &kp W        &kp F        &kp P  &kp B            &kp J           &kp L  &kp U        &kp Y        &kp SEMI         &none
 &kp BACKSPACE  &hml LCTRL A  &hml LGUI R  &hml LALT S  &kp T  &kp G            &kp M           &kp N  &hmr RALT E  &hmr RGUI I  &hmr RCTRL O     &kp ENTER
@@ -181,7 +181,7 @@
          * Activated via &tog 3 from ADMIN. */
 
         colemak_mac_layer {
-            display-name = "Colemak (Mac)";
+            display-name = "Colemak-DH (Mac)";
             bindings = <
 &none          &kp Q        &kp W         &kp F        &kp P  &kp B            &kp J           &kp L  &kp U        &kp Y         &kp SEMI         &none
 &kp BACKSPACE  &hml LGUI A  &hml LCTRL R  &hml LALT S  &kp T  &kp G            &kp M           &kp N  &hmr RALT E  &hmr RCTRL I  &hmr RGUI O      &kp ENTER
@@ -193,7 +193,7 @@
         /* NUM — left: 1-5 top row, 6-0 homerow; right: &trans */
 
         num_layer {
-            display-name = "Num";
+            display-name = "Numbers";
             bindings = <
 &trans  &kp NUMBER_1  &kp NUMBER_2  &kp NUMBER_3  &kp NUMBER_4  &kp N5        &trans  &trans  &trans  &trans  &trans  &trans
 &trans  &kp NUMBER_6  &kp N7        &kp N8        &kp NUMBER_9  &kp NUMBER_0  &trans  &trans  &trans  &trans  &trans  &trans
@@ -206,7 +206,7 @@
          * right bottom: Ctrl+Left/Right word motions; left: del + vol */
 
         nav_layer {
-            display-name = "Nav";
+            display-name = "Navigation";
             bindings = <
 &trans  &trans  &trans      &trans  &trans        &trans        &kp HOME  &kp PAGE_DOWN  &kp PAGE_UP  &kp END    &trans  &trans
 &trans  &trans  &trans      &trans  &kp C_VOL_DN  &kp C_VOL_UP  &kp LEFT  &kp DOWN       &kp UP       &kp RIGHT  &trans  &trans
@@ -216,7 +216,7 @@
         };
 
         sym_layer {
-            display-name = "Sym";
+            display-name = "Symbols";
             bindings = <
 &trans  &kp MINUS      &kp EQUAL  &kp LEFT_PARENTHESIS  &kp RIGHT_PARENTHESIS  &kp GRAVE             &trans  &trans  &trans  &trans  &trans  &trans
 &trans  &kp AMPERSAND  &kp PIPE   &kp LEFT_BRACE        &kp RIGHT_BRACE        &kp TILDE             &trans  &trans  &trans  &trans  &trans  &trans
@@ -243,7 +243,7 @@
         };
 
         func_layer {
-            display-name = "Func";
+            display-name = "Function Keys";
             bindings = <
 &trans  &kp F1   &kp F2   &kp F3  &kp F4  &kp F5   &trans  &trans  &trans  &trans  &trans  &trans
 &trans  &kp F6   &kp F7   &kp F8  &kp F9  &kp F10  &trans  &trans  &trans  &trans  &trans  &trans

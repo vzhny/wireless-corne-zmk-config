@@ -50,8 +50,10 @@ static void clear_canvas(lv_obj_t *canvas) {
 /* canvas_bot (physical top strip, 24 px visible = canvas rows 0..23)
  *
  * Layout (canvas space):
- *   y=0..11  : "LINK"/"----" at x=0, battery % at x=40  (Montserrat 12)
- *   y=13..23 : battery shell at x=23, centred in 68 px  (22×10)
+ *   Physical top row    → canvas y=13..23: link status x=0, battery x=22, % x=46
+ *   Physical bottom row → canvas y=0..11:  empty
+ *
+ * 270° CW rotation: canvas_cy=13 → physical_y=10 (top of strip).
  */
 static void render_status_canvas(struct peripheral_state *state) {
     clear_canvas(canvas_bot);
@@ -59,17 +61,13 @@ static void render_status_canvas(struct peripheral_state *state) {
     lv_draw_label_dsc_t lbl;
     init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_12);
 
-    /* Connection status — left of top line */
+    /* Physical top row (canvas y≥13): link status left, battery+% right */
     const char *conn_str = state->connected ? "LINK" : "----";
-    canvas_draw_text(canvas_bot, 0, 0, 38, &lbl, conn_str);
-
-    /* Battery percentage — right of top line */
+    canvas_draw_text(canvas_bot, 0, 13, 20, &lbl, conn_str);
+    draw_battery(canvas_bot, 22, 14, state->battery_level, false);
     char batt_buf[6];
     snprintf(batt_buf, sizeof(batt_buf), "%d%%", state->battery_level);
-    canvas_draw_text(canvas_bot, 40, 0, 28, &lbl, batt_buf);
-
-    /* Battery icon centred at y=13: (68-24)/2 = 22 → x=23 */
-    draw_battery(canvas_bot, 23, 13, state->battery_level, false);
+    canvas_draw_text(canvas_bot, 46, 13, 22, &lbl, batt_buf);
 
     rotate_canvas(canvas_bot);
 }
