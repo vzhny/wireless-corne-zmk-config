@@ -40,7 +40,9 @@ static uint8_t cbuf_bot[CANVAS_BUF_SIZE];
 /* ── Layer names ─────────────────────────────────────────────────────── */
 
 static const char *layer_names[] = {
-    "Base", "Mac", "Num", "Nav", "Sym", "Admin", "Func",
+    "Qwerty (Win)", "Qwerty (Mac)",
+    "Colemak (Win)", "Colemak (Mac)",
+    "Num", "Nav", "Sym", "Admin", "Func",
 };
 
 #define LAYER_NAME_COUNT ARRAY_SIZE(layer_names)
@@ -100,7 +102,7 @@ static void render_layer_canvas(struct central_state *state) {
 static void render_mod_canvas(struct central_state *state) {
     clear_canvas(canvas_mid);
 
-    bool is_mac = (state->active_layer == 1);
+    bool is_mac = (state->active_layer == 1 || state->active_layer == 3);
     uint32_t mods = state->mods;
 
     /* Left-side modifier bits only */

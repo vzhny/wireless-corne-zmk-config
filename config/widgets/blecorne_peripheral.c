@@ -38,7 +38,9 @@ static uint8_t cbuf_bot[CANVAS_BUF_SIZE];
 /* ── Layer names ─────────────────────────────────────────────────────── */
 
 static const char *layer_names[] = {
-    "Base", "Mac", "Num", "Nav", "Sym", "Admin", "Func",
+    "Qwerty (Win)", "Qwerty (Mac)",
+    "Colemak (Win)", "Colemak (Mac)",
+    "Num", "Nav", "Sym", "Admin", "Func",
 };
 
 #define LAYER_NAME_COUNT ARRAY_SIZE(layer_names)
@@ -80,7 +82,7 @@ static void render_mid_canvas(struct peripheral_state *state) {
 
     /* R-modifier row (canvas x=27): ⇧ Shift | ⌃ Ctrl | GUI | Alt
      * r_mods bits: 0=RCtrl, 1=RShift, 2=RAlt, 3=RGUI */
-    bool is_mac = (state->active_layer == 1);
+    bool is_mac = (state->active_layer == 1 || state->active_layer == 3);
     uint8_t r = state->r_mods;
     bool shift_active = !!(r & BIT(1));
     bool ctrl_active  = !!(r & BIT(0));
