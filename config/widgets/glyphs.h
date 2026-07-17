@@ -21,3 +21,6 @@ extern const lv_image_dsc_t glyph_alt;
 
 /* ⇧  Shift (solid upward arrow with stem and base) */
 extern const lv_image_dsc_t glyph_sft;
+
+/* ᛒ  Bluetooth (hagall-rune style: vertical spine + two mirrored V arms) */
+extern const lv_image_dsc_t glyph_bt;

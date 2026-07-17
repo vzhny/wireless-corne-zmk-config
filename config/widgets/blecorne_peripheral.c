@@ -25,29 +25,17 @@ struct peripheral_state {
     uint8_t r_mods; /* R-mod nibble: bit0=RCtrl, bit1=RShift, bit2=RAlt, bit3=RGUI */
 };
 
+static struct peripheral_state widget_state;
+
 /* ── Canvases ────────────────────────────────────────────────────────── */
 
-static lv_obj_t *canvas_top;
-static lv_obj_t *canvas_mid;
-static lv_obj_t *canvas_bot;
+static lv_obj_t *canvas_top;    /* x=92  → physical bottom strip (blank)   */
+static lv_obj_t *canvas_mid;    /* x=24  → physical middle strip (mods)    */
+static lv_obj_t *canvas_bot;    /* x=-44 → physical top strip   (status)   */
 
 static uint8_t cbuf_top[CANVAS_BUF_SIZE];
 static uint8_t cbuf_mid[CANVAS_BUF_SIZE];
 static uint8_t cbuf_bot[CANVAS_BUF_SIZE];
-
-/* ── Layer names ─────────────────────────────────────────────────────── */
-
-static const char *layer_names[] = {
-    "Qwerty (Win)", "Qwerty (Mac)",
-    "Colemak (Win)", "Colemak (Mac)",
-    "Num", "Nav", "Sym", "Admin", "Func",
-};
-
-#define LAYER_NAME_COUNT ARRAY_SIZE(layer_names)
-
-static const char *get_layer_name(uint8_t idx) {
-    return (idx < LAYER_NAME_COUNT) ? layer_names[idx] : "???";
-}
 
 /* ── Draw helpers ────────────────────────────────────────────────────── */
 
@@ -59,31 +47,47 @@ static void clear_canvas(lv_obj_t *canvas) {
 
 /* ── Canvas renderers ────────────────────────────────────────────────── */
 
-static void render_layer_canvas(struct peripheral_state *state) {
+/* canvas_bot (physical top strip, 24 px visible = canvas rows 0..23)
+ *
+ * Layout (canvas space):
+ *   y=0..11  : "LINK"/"----" at x=0, battery % at x=40  (Montserrat 12)
+ *   y=13..23 : battery shell at x=23, centred in 68 px  (22×10)
+ */
+static void render_status_canvas(struct peripheral_state *state) {
     clear_canvas(canvas_bot);
 
     lv_draw_label_dsc_t lbl;
-    init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_16);
-    canvas_draw_text(canvas_bot, 0, 0, CANVAS_SIZE, &lbl,
-                     get_layer_name(state->active_layer));
+    init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_12);
+
+    /* Connection status — left of top line */
+    const char *conn_str = state->connected ? "LINK" : "----";
+    canvas_draw_text(canvas_bot, 0, 0, 38, &lbl, conn_str);
+
+    /* Battery percentage — right of top line */
+    char batt_buf[6];
+    snprintf(batt_buf, sizeof(batt_buf), "%d%%", state->battery_level);
+    canvas_draw_text(canvas_bot, 40, 0, 28, &lbl, batt_buf);
+
+    /* Battery icon centred at y=13: (68-24)/2 = 22 → x=23 */
+    draw_battery(canvas_bot, 23, 13, state->battery_level, false);
 
     rotate_canvas(canvas_bot);
 }
 
-static void render_mid_canvas(struct peripheral_state *state) {
+/* canvas_mid (physical middle strip, 68 px)
+ *
+ * R-mod nibble bit mapping: bit0=RCtrl, bit1=RShift, bit2=RAlt, bit3=RGUI
+ *
+ * Glyph order mirrors left side (right-to-left):
+ *   Win: Alt  ⊞  ⌃  ⇧
+ *   Mac: ⌥  ⌃  ⌘  ⇧
+ */
+static void render_mod_canvas(struct peripheral_state *state) {
     clear_canvas(canvas_mid);
 
-    lv_draw_label_dsc_t lbl;
-    init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_16);
-
-    /* Connection status near top of strip (canvas x=5) */
-    const char *conn_str = state->connected ? "LINK" : "----";
-    canvas_draw_text(canvas_mid, 5, 0, CANVAS_SIZE, &lbl, conn_str);
-
-    /* R-modifier row (canvas x=27): ⇧ Shift | ⌃ Ctrl | GUI | Alt
-     * r_mods bits: 0=RCtrl, 1=RShift, 2=RAlt, 3=RGUI */
     bool is_mac = (state->active_layer == 1 || state->active_layer == 3);
     uint8_t r = state->r_mods;
+
     bool shift_active = !!(r & BIT(1));
     bool ctrl_active  = !!(r & BIT(0));
     bool gui_active   = !!(r & BIT(3));
@@ -91,43 +95,35 @@ static void render_mid_canvas(struct peripheral_state *state) {
 
     int gx = 2, gy = 27, step = 17;
 
-    draw_glyph(canvas_mid, gx,          gy, &glyph_sft,  shift_active);
-    draw_glyph(canvas_mid, gx + step,   gy, &glyph_ctrl, ctrl_active);
     if (is_mac) {
-        draw_glyph(canvas_mid, gx + step * 2, gy, &glyph_cmd, gui_active);
-        draw_glyph(canvas_mid, gx + step * 3, gy, &glyph_opt, alt_active);
+        /* Mac: ⌥ ⌃ ⌘ ⇧ */
+        draw_glyph(canvas_mid, gx,          gy, &glyph_opt,  alt_active);
+        draw_glyph(canvas_mid, gx + step,   gy, &glyph_ctrl, ctrl_active);
+        draw_glyph(canvas_mid, gx + step*2, gy, &glyph_cmd,  gui_active);
+        draw_glyph(canvas_mid, gx + step*3, gy, &glyph_sft,  shift_active);
     } else {
-        draw_glyph(canvas_mid, gx + step * 2, gy, &glyph_win, gui_active);
-        draw_glyph(canvas_mid, gx + step * 3, gy, &glyph_alt, alt_active);
+        /* Win: Alt ⊞ ⌃ ⇧ */
+        draw_glyph(canvas_mid, gx,          gy, &glyph_alt,  alt_active);
+        draw_glyph(canvas_mid, gx + step,   gy, &glyph_win,  gui_active);
+        draw_glyph(canvas_mid, gx + step*2, gy, &glyph_ctrl, ctrl_active);
+        draw_glyph(canvas_mid, gx + step*3, gy, &glyph_sft,  shift_active);
     }
 
     rotate_canvas(canvas_mid);
 }
 
-static void render_battery_canvas(struct peripheral_state *state) {
+/* canvas_top (physical bottom strip, 68 px) — intentionally blank */
+static void render_blank_canvas(void) {
     clear_canvas(canvas_top);
-
-    draw_battery(canvas_top, 22, 29, state->battery_level, false);
-
-    char buf[8];
-    snprintf(buf, sizeof(buf), "%d%%", state->battery_level);
-    lv_draw_label_dsc_t lbl;
-    init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_16);
-    canvas_draw_text(canvas_top, 16, 42, 36, &lbl, buf);
-
     rotate_canvas(canvas_top);
 }
-
-/* ── Widget state ────────────────────────────────────────────────────── */
-
-static struct peripheral_state widget_state;
 
 /* ── Public modifier update (called by modifier_sync_peripheral) ─────── */
 
 void blecorne_peripheral_update_mods(uint8_t r_mods) {
     widget_state.r_mods = r_mods;
     ZMK_DISPLAY_LOCK();
-    render_mid_canvas(&widget_state);
+    render_mod_canvas(&widget_state);
     ZMK_DISPLAY_UNLOCK();
 }
 
@@ -140,7 +136,7 @@ static int battery_event_cb(const zmk_event_t *eh) {
     }
     widget_state.battery_level = ev->state_of_charge;
     ZMK_DISPLAY_LOCK();
-    render_battery_canvas(&widget_state);
+    render_status_canvas(&widget_state);
     ZMK_DISPLAY_UNLOCK();
     return ZMK_EV_EVENT_BUBBLE;
 }
@@ -148,7 +144,7 @@ static int battery_event_cb(const zmk_event_t *eh) {
 static int split_event_cb(const zmk_event_t *eh) {
     widget_state.connected = zmk_split_bt_peripheral_is_connected();
     ZMK_DISPLAY_LOCK();
-    render_mid_canvas(&widget_state);
+    render_status_canvas(&widget_state);
     ZMK_DISPLAY_UNLOCK();
     return ZMK_EV_EVENT_BUBBLE;
 }
@@ -160,8 +156,7 @@ static int layer_event_cb(const zmk_event_t *eh) {
     }
     widget_state.active_layer = zmk_keymap_highest_layer_active();
     ZMK_DISPLAY_LOCK();
-    render_layer_canvas(&widget_state);
-    render_mid_canvas(&widget_state); /* layer affects Mac vs Win glyph set */
+    render_mod_canvas(&widget_state); /* layer affects Mac vs Win glyph order */
     ZMK_DISPLAY_UNLOCK();
     return ZMK_EV_EVENT_BUBBLE;
 }
@@ -205,9 +200,9 @@ int blecorne_peripheral_widget_init(struct blecorne_peripheral_widget *widget,
     widget_state.active_layer  = zmk_keymap_highest_layer_active();
     widget_state.r_mods        = 0;
 
-    render_layer_canvas(&widget_state);
-    render_mid_canvas(&widget_state);
-    render_battery_canvas(&widget_state);
+    render_status_canvas(&widget_state);
+    render_mod_canvas(&widget_state);
+    render_blank_canvas();
 
     return 0;
 }
