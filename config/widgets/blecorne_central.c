@@ -172,15 +172,31 @@ static void render_layer_canvas(struct central_state *state) {
     clear_canvas(canvas_top);
 
     uint8_t active = state->active_layer;
+    lv_draw_label_dsc_t num_lbl;
+    char num_str[3];
 
-    /* Row 1: layers 1–5 */
+    /* Row 1: layers 1–5, x=3,16,29,42,55 at canvas y=50 */
     for (int i = 1; i <= 5; i++) {
-        draw_circle(canvas_top, 3 + (i - 1) * 13, 50, 10, active == i);
+        int cx = 3 + (i - 1) * 13;
+        bool on = (active == i);
+        draw_circle(canvas_top, cx, 50, 10, on);
+        init_label_dsc(&num_lbl, on ? LVGL_BACKGROUND : LVGL_FOREGROUND,
+                       &lv_font_montserrat_8);
+        num_lbl.align = LV_TEXT_ALIGN_CENTER;
+        snprintf(num_str, sizeof(num_str), "%d", i);
+        canvas_draw_text(canvas_top, cx, 51, 10, &num_lbl, num_str);
     }
 
-    /* Row 2: layers 6–9 (circle 9 always hollow — no such layer) */
+    /* Row 2: layers 6–9, x=10,23,36,49 at canvas y=37 (9 always hollow) */
     for (int i = 6; i <= 9; i++) {
-        draw_circle(canvas_top, 10 + (i - 6) * 13, 37, 10, active == i);
+        int cx = 10 + (i - 6) * 13;
+        bool on = (active == i);
+        draw_circle(canvas_top, cx, 37, 10, on);
+        init_label_dsc(&num_lbl, on ? LVGL_BACKGROUND : LVGL_FOREGROUND,
+                       &lv_font_montserrat_8);
+        num_lbl.align = LV_TEXT_ALIGN_CENTER;
+        snprintf(num_str, sizeof(num_str), "%d", i);
+        canvas_draw_text(canvas_top, cx, 38, 10, &num_lbl, num_str);
     }
 
     /* Layer name */

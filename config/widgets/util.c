@@ -36,10 +36,12 @@ void draw_battery(lv_obj_t *canvas, int x, int y, uint8_t level, bool charging) 
         canvas_draw_rect(canvas, x + 1, y + 1, fill_w, 8, &rect_dsc);
     }
 
-    /* charging bolt — simple V shape */
+    /* charging bolt — drawn in BACKGROUND color so it's visible on the filled bar */
     if (charging) {
+        lv_draw_line_dsc_t bolt_dsc;
+        init_line_dsc(&bolt_dsc, LVGL_BACKGROUND, 1);
         lv_point_t pts[] = {{x + 12, y + 2}, {x + 10, y + 5}, {x + 12, y + 5}, {x + 10, y + 8}};
-        canvas_draw_line(canvas, pts, 4, &line_dsc);
+        canvas_draw_line(canvas, pts, 4, &bolt_dsc);
     }
 }
 
@@ -107,7 +109,7 @@ void draw_glyph(lv_obj_t *canvas, int x, int y,
                 const lv_image_dsc_t *glyph, bool active) {
     lv_draw_image_dsc_t img_dsc;
     lv_draw_image_dsc_init(&img_dsc);
-    img_dsc.recolor     = active ? LVGL_FOREGROUND : lv_color_make(0xAA, 0xAA, 0xAA);
-    img_dsc.recolor_opa = active ? LV_OPA_COVER : LV_OPA_50;
+    img_dsc.recolor     = LVGL_FOREGROUND;
+    img_dsc.recolor_opa = active ? LV_OPA_COVER : LV_OPA_40;
     canvas_draw_img(canvas, x, y, glyph, &img_dsc);
 }
