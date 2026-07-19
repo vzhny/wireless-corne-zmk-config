@@ -86,6 +86,23 @@ void canvas_draw_img(lv_obj_t *canvas, int x, int y, const void *src,
     lv_canvas_draw_image(canvas, x, y, src, dsc);
 }
 
+void draw_circle(lv_obj_t *canvas, int x, int y, int size, bool filled) {
+    lv_draw_rect_dsc_t dsc;
+    lv_draw_rect_dsc_init(&dsc);
+    dsc.radius = LV_RADIUS_CIRCLE;
+    if (filled) {
+        dsc.bg_color   = LVGL_FOREGROUND;
+        dsc.bg_opa     = LV_OPA_COVER;
+        dsc.border_width = 0;
+    } else {
+        dsc.bg_opa       = LV_OPA_TRANSP;
+        dsc.border_color = LVGL_FOREGROUND;
+        dsc.border_opa   = LV_OPA_COVER;
+        dsc.border_width = 1;
+    }
+    canvas_draw_rect(canvas, x, y, size, size, &dsc);
+}
+
 void draw_glyph(lv_obj_t *canvas, int x, int y,
                 const lv_image_dsc_t *glyph, bool active) {
     lv_draw_image_dsc_t img_dsc;

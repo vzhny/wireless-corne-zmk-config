@@ -157,16 +157,37 @@ static void render_mod_canvas(struct central_state *state) {
 
 /* canvas_top (physical bottom strip, 68 px)
  *
- * Layer name centred vertically: canvas y=26 → physical centre of strip.
- * Text clips at 68 px canvas width for long names — known limitation.
+ * Layout (physical strip_y from top, canvas_cy = 67-strip_y):
+ *   strip_y=8..17  : circle row 1 — layers 1-5  (canvas y=50, h=10)
+ *   strip_y=21..30 : circle row 2 — layers 6-9  (canvas y=37, h=10)
+ *   strip_y=40..55 : layer name centred          (canvas y=12, h=16)
+ *
+ * Circle n (1-indexed) fills when active_layer == n.
+ * Circle 9 is always hollow (no layer 9 exists).
+ *
+ * Row 1 (5 circles, 10px, 3px gap): x = 3, 16, 29, 42, 55
+ * Row 2 (4 circles, 10px, 3px gap): x = 10, 23, 36, 49
  */
 static void render_layer_canvas(struct central_state *state) {
     clear_canvas(canvas_top);
 
+    uint8_t active = state->active_layer;
+
+    /* Row 1: layers 1–5 */
+    for (int i = 1; i <= 5; i++) {
+        draw_circle(canvas_top, 3 + (i - 1) * 13, 50, 10, active == i);
+    }
+
+    /* Row 2: layers 6–9 (circle 9 always hollow — no such layer) */
+    for (int i = 6; i <= 9; i++) {
+        draw_circle(canvas_top, 10 + (i - 6) * 13, 37, 10, active == i);
+    }
+
+    /* Layer name */
     lv_draw_label_dsc_t lbl;
     init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_16);
     lbl.align = LV_TEXT_ALIGN_CENTER;
-    canvas_draw_text(canvas_top, 0, 26, CANVAS_SIZE, &lbl,
+    canvas_draw_text(canvas_top, 0, 12, CANVAS_SIZE, &lbl,
                      get_layer_name(state->active_layer));
 
     rotate_canvas(canvas_top);
