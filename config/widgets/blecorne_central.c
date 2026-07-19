@@ -209,13 +209,35 @@ static void render_layer_canvas(struct central_state *state) {
     rotate_canvas(canvas_top);
 }
 
+/* ── Display work items (run on the ZMK display work queue) ──────────── */
+
+static void status_render_cb(struct k_work *work) {
+    render_status_canvas(&widget_state);
+}
+static K_WORK_DEFINE(status_render_work, status_render_cb);
+
+static void mod_render_cb(struct k_work *work) {
+    render_mod_canvas(&widget_state);
+}
+static K_WORK_DEFINE(mod_render_work, mod_render_cb);
+
+static void layer_mod_render_cb(struct k_work *work) {
+    render_layer_canvas(&widget_state);
+    render_mod_canvas(&widget_state); /* layer affects Mac vs Win glyph order */
+}
+static K_WORK_DEFINE(layer_mod_render_work, layer_mod_render_cb);
+
+static inline void display_submit(struct k_work *work) {
+    if (zmk_display_is_initialized()) {
+        k_work_submit_to_queue(zmk_display_work_q(), work);
+    }
+}
+
 /* ── BT flash work item (submitted by timer, runs on system workq) ───── */
 
 static void bt_flash_work_cb(struct k_work *work) {
     bt_flash_on = !bt_flash_on;
-    ZMK_DISPLAY_LOCK();
-    render_status_canvas(&widget_state);
-    ZMK_DISPLAY_UNLOCK();
+    display_submit(&status_render_work);
 }
 
 /* ── Event listeners ─────────────────────────────────────────────────── */
@@ -227,9 +249,7 @@ static int battery_event_cb(const zmk_event_t *eh) {
     }
     widget_state.battery_level = ev->state_of_charge;
     widget_state.charging      = zmk_usb_is_powered();
-    ZMK_DISPLAY_LOCK();
-    render_status_canvas(&widget_state);
-    ZMK_DISPLAY_UNLOCK();
+    display_submit(&status_render_work);
     return ZMK_EV_EVENT_BUBBLE;
 }
 
@@ -239,18 +259,13 @@ static int layer_event_cb(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
     widget_state.active_layer = zmk_keymap_highest_layer_active();
-    ZMK_DISPLAY_LOCK();
-    render_layer_canvas(&widget_state);
-    render_mod_canvas(&widget_state); /* layer affects Mac vs Win glyph order */
-    ZMK_DISPLAY_UNLOCK();
+    display_submit(&layer_mod_render_work);
     return ZMK_EV_EVENT_BUBBLE;
 }
 
 static int keycode_event_cb(const zmk_event_t *eh) {
     widget_state.mods = zmk_hid_get_explicit_mods();
-    ZMK_DISPLAY_LOCK();
-    render_mod_canvas(&widget_state);
-    ZMK_DISPLAY_UNLOCK();
+    display_submit(&mod_render_work);
     return ZMK_EV_EVENT_BUBBLE;
 }
 
@@ -267,9 +282,7 @@ static int ble_event_cb(const zmk_event_t *eh) {
         k_timer_start(&bt_flash_timer, K_MSEC(500), K_MSEC(500));
     }
 
-    ZMK_DISPLAY_LOCK();
-    render_status_canvas(&widget_state);
-    ZMK_DISPLAY_UNLOCK();
+    display_submit(&status_render_work);
     return ZMK_EV_EVENT_BUBBLE;
 }
 

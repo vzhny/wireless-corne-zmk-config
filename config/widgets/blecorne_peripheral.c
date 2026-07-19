@@ -115,13 +115,29 @@ static void render_blank_canvas(void) {
     rotate_canvas(canvas_top);
 }
 
+/* ── Display work items (run on the ZMK display work queue) ──────────── */
+
+static void status_render_cb(struct k_work *work) {
+    render_status_canvas(&widget_state);
+}
+static K_WORK_DEFINE(status_render_work, status_render_cb);
+
+static void mod_render_cb(struct k_work *work) {
+    render_mod_canvas(&widget_state);
+}
+static K_WORK_DEFINE(mod_render_work, mod_render_cb);
+
+static inline void display_submit(struct k_work *work) {
+    if (zmk_display_is_initialized()) {
+        k_work_submit_to_queue(zmk_display_work_q(), work);
+    }
+}
+
 /* ── Public modifier update (called by modifier_sync_peripheral) ─────── */
 
 void blecorne_peripheral_update_mods(uint8_t r_mods) {
     widget_state.r_mods = r_mods;
-    ZMK_DISPLAY_LOCK();
-    render_mod_canvas(&widget_state);
-    ZMK_DISPLAY_UNLOCK();
+    display_submit(&mod_render_work);
 }
 
 /* ── Event listeners ─────────────────────────────────────────────────── */
@@ -132,17 +148,13 @@ static int battery_event_cb(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
     widget_state.battery_level = ev->state_of_charge;
-    ZMK_DISPLAY_LOCK();
-    render_status_canvas(&widget_state);
-    ZMK_DISPLAY_UNLOCK();
+    display_submit(&status_render_work);
     return ZMK_EV_EVENT_BUBBLE;
 }
 
 static int split_event_cb(const zmk_event_t *eh) {
     widget_state.connected = zmk_split_bt_peripheral_is_connected();
-    ZMK_DISPLAY_LOCK();
-    render_status_canvas(&widget_state);
-    ZMK_DISPLAY_UNLOCK();
+    display_submit(&status_render_work);
     return ZMK_EV_EVENT_BUBBLE;
 }
 
@@ -152,9 +164,7 @@ static int layer_event_cb(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
     widget_state.active_layer = zmk_keymap_highest_layer_active();
-    ZMK_DISPLAY_LOCK();
-    render_mod_canvas(&widget_state); /* layer affects Mac vs Win glyph order */
-    ZMK_DISPLAY_UNLOCK();
+    display_submit(&mod_render_work); /* layer affects Mac vs Win glyph order */
     return ZMK_EV_EVENT_BUBBLE;
 }
 
