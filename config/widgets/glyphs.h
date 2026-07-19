@@ -25,5 +25,5 @@ extern const lv_image_dsc_t glyph_sft;
 /* ᛒ  Bluetooth (hagall-rune style: vertical spine + two mirrored V arms) */
 extern const lv_image_dsc_t glyph_bt;
 
-/* 📡  Tower-broadcast (two arc pairs converging to center + vertical stem) */
-extern const lv_image_dsc_t glyph_tower;
+/* 📶  WiFi signal (two concentric arcs + center dot, mirroring FA wifi icon) */
+extern const lv_image_dsc_t glyph_wifi;

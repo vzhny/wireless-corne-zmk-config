@@ -62,7 +62,7 @@ static void render_status_canvas(struct peripheral_state *state) {
     init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_12);
 
     /* Physical top row (canvas y≥13): tower glyph left, battery+% right */
-    draw_glyph(canvas_bot, 0, 13, &glyph_tower, state->connected);
+    draw_glyph(canvas_bot, 0, 13, &glyph_wifi, state->connected);
     draw_battery(canvas_bot, 22, 14, state->battery_level, false);
     char batt_buf[6];
     snprintf(batt_buf, sizeof(batt_buf), "%d%%", state->battery_level);
