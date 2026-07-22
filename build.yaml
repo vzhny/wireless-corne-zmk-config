@@ -9,8 +9,7 @@ include:
   - board: blecorne_right
     shield: nice_view
 
-  # Uncomment to wipe stale NVS/BLE bonds, then re-flash normal firmware.
-  # - board: blecorne_left
-  #   shield: settings_reset
-  # - board: blecorne_right
-  #   shield: settings_reset
+  - board: blecorne_left
+    shield: settings_reset
+  - board: blecorne_right
+    shield: settings_reset
