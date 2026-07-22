@@ -40,6 +40,7 @@ h1{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
 .bt2{width:3px;height:6px;background:var(--display-fg);border-radius:0 1px 1px 0;align-self:center;}
 .tx{font-size:9.5px;color:var(--display-fg);white-space:nowrap;line-height:1;letter-spacing:.01em;}
 .tx.b{font-weight:700;}
+.bt-connecting-txt{font-size:8.2px;}
 </style>
 <h1>Corne — nice!view Display States</h1>
 <p class="sub">68×160 Sharp LCD · inverted · 2× scale · JetBrains Mono</p>
@@ -48,6 +49,15 @@ h1{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
 function btSvg(vis){
   const op=vis?1:0.18;
   return '<div class="bt"><svg width="10" height="18" viewBox="0 0 10 18" fill="none" opacity="'+op+'">'
+    +'<line x1="5" y1="1" x2="5" y2="17" stroke="var(--display-fg)" stroke-width="1.5"/>'
+    +'<polyline points="5,2 9,6 5,10" stroke="var(--display-fg)" stroke-width="1.5" fill="none" stroke-linejoin="round"/>'
+    +'<polyline points="5,10 9,14 5,17" stroke="var(--display-fg)" stroke-width="1.5" fill="none" stroke-linejoin="round"/>'
+    +'</svg></div>';
+}
+
+function btSvgAnimated(){
+  // Icon blinks via JS toggling .bt-connecting-icon opacity (matches 500ms bt_flash_timer)
+  return '<div class="bt bt-connecting-icon"><svg width="10" height="18" viewBox="0 0 10 18" fill="none">'
     +'<line x1="5" y1="1" x2="5" y2="17" stroke="var(--display-fg)" stroke-width="1.5"/>'
     +'<polyline points="5,2 9,6 5,10" stroke="var(--display-fg)" stroke-width="1.5" fill="none" stroke-linejoin="round"/>'
     +'<polyline points="5,10 9,14 5,17" stroke="var(--display-fg)" stroke-width="1.5" fill="none" stroke-linejoin="round"/>'
@@ -121,13 +131,18 @@ function L(o){
       layer=o.layer||'Qwerty (Win)', activeLayer=o.activeLayer||0;
   var s=mods[0],c=mods[1],g=mods[2],a=mods[3];
   var btVis = btState !== 'search-off';
+  var isConnecting = btState === 'connecting';
+  var iconHtml = isConnecting ? btSvgAnimated() : btSvg(btVis);
+  var btLineHtml = isConnecting
+    ? '<span class="tx b bt-connecting-txt">Connecting.</span>'
+    : '<span class="tx b">BT '+btProfile+'</span>';
   var gs = isMac
     ? [G('&#8679;',s), G('&#8984;',g), G('&#8963;',c), G('&#8997;',a)]
     : [G('&#8679;',s), G('&#8963;',c), G('&#8862;',g), G(altSVG(),a)];
   return '<div class="display"><div class="di">'
     + '<div class="ts">'
-    + '<div class="ts-a">'+btSvg(btVis)+battUnit(batt,charging)+'</div>'
-    + '<div class="ts-b"><span class="tx b">BT '+btProfile+'</span></div>'
+    + '<div class="ts-a">'+iconHtml+battUnit(batt,charging)+'</div>'
+    + '<div class="ts-b">'+btLineHtml+'</div>'
     + '</div>'
     + '<div class="ms"><div class="ms-g">'+gs.join('')+'</div></div>'
     + '<div class="bs">'
@@ -159,7 +174,7 @@ var left = [
   row('Qwerty (Mac)\nBT 0 90%\nlayer 1 active', L({batt:90,isMac:true,layer:'Qwerty (Mac)',activeLayer:1})),
   row('Colemak (Win)\nBT 0 60%\nlayer 2 active', L({batt:60,layer:'Colemak (Win)',activeLayer:2})),
   row('Numbers\nBT 0 50%\nlayer 4 active', L({batt:50,layer:'Numbers',activeLayer:4})),
-  row('Symbols\nBT 2 searching\n80% layer 6', L({btState:'search-on',btProfile:2,batt:80,layer:'Symbols',activeLayer:6})),
+  row('Symbols\nBT 2 connecting\n(live 500ms anim)\n80% layer 6', L({btState:'connecting',btProfile:2,batt:80,layer:'Symbols',activeLayer:6})),
   row('Function Keys\nBT 0 45% charging\nlayer 8 active', L({batt:45,charging:true,layer:'Function Keys',activeLayer:8})),
 ];
 
@@ -173,4 +188,16 @@ var right = [
 document.getElementById('root').innerHTML =
   '<div><div class="col-title">Left half &middot; central</div><div class="states-col">'+left.join('')+'</div></div>'
   + '<div><div class="col-title">Right half &middot; peripheral</div><div class="states-col">'+right.join('')+'</div></div>';
+
+/* Live demo of the "connecting" state: icon blinks + dots cycle, both on the
+   same 500ms tick — mirrors bt_flash_timer driving both bt_flash_on and
+   connecting_dots in blecorne_central.c */
+var connectDots = 0, connectOn = true;
+setInterval(function(){
+  connectDots = (connectDots + 1) % 3;
+  connectOn = !connectOn;
+  var dots = '.'.repeat(connectDots + 1);
+  document.querySelectorAll('.bt-connecting-txt').forEach(function(el){ el.textContent = 'Connecting' + dots; });
+  document.querySelectorAll('.bt-connecting-icon').forEach(function(el){ el.style.opacity = connectOn ? 1 : 0.18; });
+}, 500);
 </script>

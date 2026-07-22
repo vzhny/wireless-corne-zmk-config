@@ -66,8 +66,9 @@ static const char *get_layer_name(uint8_t idx) {
 
 /* ── BT flash state ──────────────────────────────────────────────────── */
 
-static bool bt_connected  = false;
-static bool bt_flash_on   = true;
+static bool    bt_connected    = false;
+static bool    bt_flash_on     = true;
+static uint8_t connecting_dots = 1; /* 1..3, advances each 500ms tick while searching */
 
 static void bt_flash_work_cb(struct k_work *work);
 static K_WORK_DEFINE(bt_flash_work, bt_flash_work_cb);
@@ -112,10 +113,18 @@ static void render_status_canvas(struct central_state *state) {
     snprintf(batt_buf, sizeof(batt_buf), "%d%%", state->battery_level);
     canvas_draw_text(canvas_bot, 40, 13, 28, &lbl, batt_buf);
 
-    /* Physical bottom row (canvas y=0..11): BT profile left */
-    char profile_buf[6];
-    snprintf(profile_buf, sizeof(profile_buf), "BT %d", state->ble_profile);
-    canvas_draw_text(canvas_bot, 0, 0, 68, &lbl, profile_buf);
+    /* Physical bottom row (canvas y=0..11): BT profile, or "Connecting..." while searching */
+    if (bt_connected) {
+        char profile_buf[6];
+        snprintf(profile_buf, sizeof(profile_buf), "BT %d", state->ble_profile);
+        canvas_draw_text(canvas_bot, 0, 0, 68, &lbl, profile_buf);
+    } else {
+        lv_draw_label_dsc_t conn_lbl;
+        init_label_dsc(&conn_lbl, LVGL_FOREGROUND, &lv_font_montserrat_10);
+        char conn_buf[14];
+        snprintf(conn_buf, sizeof(conn_buf), "Connecting%.*s", connecting_dots, "...");
+        canvas_draw_text(canvas_bot, 0, 1, 68, &conn_lbl, conn_buf);
+    }
 
     rotate_canvas(canvas_bot);
 }
@@ -236,7 +245,8 @@ static inline void display_submit(struct k_work *work) {
 /* ── BT flash work item (submitted by timer, runs on system workq) ───── */
 
 static void bt_flash_work_cb(struct k_work *work) {
-    bt_flash_on = !bt_flash_on;
+    bt_flash_on     = !bt_flash_on;
+    connecting_dots = (connecting_dots % 3) + 1;
     display_submit(&status_render_work);
 }
 
@@ -278,7 +288,8 @@ static int ble_event_cb(const zmk_event_t *eh) {
         k_timer_stop(&bt_flash_timer);
         bt_flash_on = true;
     } else {
-        bt_flash_on = true; /* start visible so first visible frame shows icon */
+        bt_flash_on     = true; /* start visible so first visible frame shows icon */
+        connecting_dots = 1;    /* restart dot animation at "Connecting." */
         k_timer_start(&bt_flash_timer, K_MSEC(500), K_MSEC(500));
     }
 
