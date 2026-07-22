@@ -1,5 +1,3 @@
-zephyr_library_sources(${CMAKE_SOURCE_DIR}/config/boot_led.c)
-
 if(CONFIG_ZMK_DISPLAY)
   zephyr_library_include_directories(${CMAKE_SOURCE_DIR}/config)
   zephyr_library_sources(${CMAKE_SOURCE_DIR}/config/custom_status_screen.c)

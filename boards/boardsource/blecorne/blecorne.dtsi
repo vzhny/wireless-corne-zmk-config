@@ -55,13 +55,6 @@
         >;
     };
 
-    leds {
-        compatible = "gpio-leds";
-        blue_led: led_0 {
-            gpios = <&gpio1 9 GPIO_ACTIVE_HIGH>;
-        };
-    };
-
     /* Switched VCC on 8-pin display header — P0.31 gates power to Pin 5 */
     ext_power {
         compatible = "zmk,ext-power-gpio";
