@@ -98,6 +98,8 @@ Layers 1 and 3 trigger Mac modifier order (⇧⌘⌃⌥ / ⌥⌃⌘⇧).
 
 `hml` (left) / `hmr` (right): balanced flavor, 280 ms tapping-term, 175 ms quick-tap, 150 ms require-prior-idle, hold-trigger-on-release.
 
+`thm` (thumb shift/key, tap = key, hold = modifier): balanced flavor, 225 ms tapping-term, 175 ms quick-tap.
+
 ### Caps Word
 
 Combo: both shift thumbs (positions 38+39), timeout 50 ms → `&caps_word`.
