@@ -22,11 +22,11 @@ static int boot_led_flash(void)
     }
     gpio_pin_configure_dt(&boot_led, GPIO_OUTPUT_INACTIVE);
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 10; i++) {
         gpio_pin_set_dt(&boot_led, 1);
-        k_sleep(K_MSEC(80));
+        k_sleep(K_MSEC(250));
         gpio_pin_set_dt(&boot_led, 0);
-        k_sleep(K_MSEC(80));
+        k_sleep(K_MSEC(250));
     }
 
     return 0;
