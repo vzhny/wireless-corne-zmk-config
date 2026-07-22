@@ -11,5 +11,7 @@ include:
 
   - board: blecorne_left
     shield: settings_reset
+    cmake-args: -DCONFIG_ZMK_DISPLAY=n
   - board: blecorne_right
     shield: settings_reset
+    cmake-args: -DCONFIG_ZMK_DISPLAY=n
