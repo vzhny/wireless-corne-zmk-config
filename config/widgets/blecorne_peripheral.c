@@ -47,11 +47,9 @@ static void clear_canvas(lv_obj_t *canvas) {
 
 /* canvas_bot (physical top strip, 24 px visible = canvas rows 0..23)
  *
- * Layout (canvas space):
- *   Physical top row    → canvas y=13..23: link status x=0, battery x=22, % x=46
- *   Physical bottom row → canvas y=0..11:  empty
- *
- * 270° CW rotation: canvas_cy=13 → physical_y=10 (top of strip).
+ * Layout (canvas space) - confirmed against real hardware:
+ *   Physical top row    → canvas y=0..11:   link status x=0, battery x=22, % x=46
+ *   Physical bottom row → canvas y=13..23:  empty
  */
 static void render_status_canvas(struct peripheral_state *state) {
     clear_canvas(canvas_bot);
@@ -59,12 +57,12 @@ static void render_status_canvas(struct peripheral_state *state) {
     lv_draw_label_dsc_t lbl;
     init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_12);
 
-    /* Physical top row (canvas y≥13): tower glyph left, battery+% right */
-    draw_glyph(canvas_bot, 0, 13, &glyph_wifi, state->connected);
-    draw_battery(canvas_bot, 22, 14, state->battery_level, false);
+    /* Physical top row (canvas y=0..11): tower glyph left, battery+% right */
+    draw_glyph(canvas_bot, 0, 0, &glyph_wifi, state->connected);
+    draw_battery(canvas_bot, 22, 1, state->battery_level, false);
     char batt_buf[6];
     snprintf(batt_buf, sizeof(batt_buf), "%d%%", state->battery_level);
-    canvas_draw_text(canvas_bot, 46, 13, 22, &lbl, batt_buf);
+    canvas_draw_text(canvas_bot, 46, 0, 22, &lbl, batt_buf);
 
     rotate_canvas(canvas_bot);
 }

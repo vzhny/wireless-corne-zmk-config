@@ -90,13 +90,12 @@ static void clear_canvas(lv_obj_t *canvas) {
 
 /* canvas_bot (physical top strip, 24 px visible = canvas rows 0..23)
  *
- * Layout (canvas space):
- *   Physical top row    → canvas y=13..23: BT glyph x=0, battery x=16, % x=40
- *   Physical bottom row → canvas y=0..11:  BT profile "BT 0"-"BT 3" x=0
+ * Layout (canvas space) - confirmed against real hardware:
+ *   Physical top row    → canvas y=0..11:   BT glyph x=0, battery x=16, % x=40
+ *   Physical bottom row → canvas y=13..23:  BT profile "BT 0"-"BT 3" x=0
  *
- * 270° CW rotation: canvas_cy=0 → physical_y=23 (strip bottom),
- *                   canvas_cy=23 → physical_y=0  (strip top).
- * Higher canvas y = higher up on physical display.
+ * (Previous comment here had this backwards - canvas_cy=0 is physical top,
+ * not bottom, for this rotation.)
  */
 static void render_status_canvas(struct central_state *state) {
     clear_canvas(canvas_bot);
@@ -104,26 +103,26 @@ static void render_status_canvas(struct central_state *state) {
     lv_draw_label_dsc_t lbl;
     init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_12);
 
-    /* Physical top row (canvas y≥13): BT indicator left, battery+% right */
+    /* Physical top row (canvas y=0..11): BT indicator left, battery+% right */
     if (bt_connected || bt_flash_on) {
-        draw_glyph(canvas_bot, 0, 13, &glyph_bt, true);
+        draw_glyph(canvas_bot, 0, 0, &glyph_bt, true);
     }
-    draw_battery(canvas_bot, 16, 14, state->battery_level, state->charging);
+    draw_battery(canvas_bot, 16, 1, state->battery_level, state->charging);
     char batt_buf[6];
     snprintf(batt_buf, sizeof(batt_buf), "%d%%", state->battery_level);
-    canvas_draw_text(canvas_bot, 40, 13, 28, &lbl, batt_buf);
+    canvas_draw_text(canvas_bot, 40, 0, 28, &lbl, batt_buf);
 
-    /* Physical bottom row (canvas y=0..11): BT profile, or "Connecting..." while searching */
+    /* Physical bottom row (canvas y≥13): BT profile, or "Connecting..." while searching */
     if (bt_connected) {
         char profile_buf[6];
         snprintf(profile_buf, sizeof(profile_buf), "BT %d", state->ble_profile);
-        canvas_draw_text(canvas_bot, 0, 0, 68, &lbl, profile_buf);
+        canvas_draw_text(canvas_bot, 0, 13, 68, &lbl, profile_buf);
     } else {
         lv_draw_label_dsc_t conn_lbl;
         init_label_dsc(&conn_lbl, LVGL_FOREGROUND, &lv_font_montserrat_10);
         char conn_buf[14];
         snprintf(conn_buf, sizeof(conn_buf), "Connecting%.*s", connecting_dots, "...");
-        canvas_draw_text(canvas_bot, 0, 1, 68, &conn_lbl, conn_buf);
+        canvas_draw_text(canvas_bot, 0, 14, 68, &conn_lbl, conn_buf);
     }
 
     rotate_canvas(canvas_bot);
