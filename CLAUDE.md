@@ -8,6 +8,7 @@ Boardsource Wireless SMT Corne split keyboard running ZMK firmware.
 - Displays: nice!view (68×160 Sharp Memory LCD) on both halves
 - Board: `blecorne_left` / `blecorne_right` (nRF52840, Adafruit UF2 bootloader)
 - CI: GitHub Actions → `zmkfirmware/zmk` build-user-config workflow (reads `build.yaml` only)
+- ZMK pinned to `f84ef436` (not tracking `main`) — see `config/west.yml` and `.github/workflows/build.yml`. Bump deliberately, then re-verify build.
 
 ## Display Preview
 
