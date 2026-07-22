@@ -65,27 +65,53 @@ void init_line_dsc(lv_draw_line_dsc_t *dsc, lv_color_t color, uint8_t width) {
     dsc->width = width;
 }
 
+/* LVGL v9 removed the lv_canvas_draw_* convenience wrappers used by an
+ * earlier API version this file was originally written against - draw onto
+ * a canvas now goes through a layer + the generic lv_draw_* functions. */
+
 void canvas_draw_text(lv_obj_t *canvas, int x, int y, int w,
                       lv_draw_label_dsc_t *dsc, const char *txt) {
-    lv_canvas_draw_text(canvas, x, y, w, dsc, txt);
+    dsc->text = txt;
+    lv_area_t area = {.x1 = x, .y1 = y, .x2 = x + w - 1, .y2 = CANVAS_SIZE - 1};
+    lv_layer_t layer;
+    lv_canvas_init_layer(canvas, &layer);
+    lv_draw_label(&layer, dsc, &area);
+    lv_canvas_finish_layer(canvas, &layer);
 }
 
 void canvas_draw_rect(lv_obj_t *canvas, int x, int y, int w, int h,
                       lv_draw_rect_dsc_t *dsc) {
     lv_area_t area = {.x1 = x, .y1 = y, .x2 = x + w - 1, .y2 = y + h - 1};
-    lv_canvas_draw_rect(canvas, area.x1, area.y1, w, h, dsc);
+    lv_layer_t layer;
+    lv_canvas_init_layer(canvas, &layer);
+    lv_draw_rect(&layer, dsc, &area);
+    lv_canvas_finish_layer(canvas, &layer);
 }
 
 void canvas_draw_line(lv_obj_t *canvas, lv_point_t points[], uint16_t count,
                       lv_draw_line_dsc_t *dsc) {
+    lv_layer_t layer;
+    lv_canvas_init_layer(canvas, &layer);
     for (uint16_t i = 0; i + 1 < count; i++) {
-        lv_canvas_draw_line(canvas, &points[i], &points[i + 1], dsc);
+        dsc->p1.x = points[i].x;
+        dsc->p1.y = points[i].y;
+        dsc->p2.x = points[i + 1].x;
+        dsc->p2.y = points[i + 1].y;
+        lv_draw_line(&layer, dsc);
     }
+    lv_canvas_finish_layer(canvas, &layer);
 }
 
 void canvas_draw_img(lv_obj_t *canvas, int x, int y, const void *src,
                      lv_draw_image_dsc_t *dsc) {
-    lv_canvas_draw_image(canvas, x, y, src, dsc);
+    dsc->src = src;
+    const lv_image_dsc_t *img = src;
+    lv_area_t area = {.x1 = x, .y1 = y,
+                      .x2 = x + img->header.w - 1, .y2 = y + img->header.h - 1};
+    lv_layer_t layer;
+    lv_canvas_init_layer(canvas, &layer);
+    lv_draw_image(&layer, dsc, &area);
+    lv_canvas_finish_layer(canvas, &layer);
 }
 
 void draw_circle(lv_obj_t *canvas, int x, int y, int size, bool filled) {

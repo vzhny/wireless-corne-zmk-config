@@ -280,7 +280,7 @@ static int keycode_event_cb(const zmk_event_t *eh) {
 }
 
 static int ble_event_cb(const zmk_event_t *eh) {
-    bt_connected               = zmk_ble_is_active_profile_connected();
+    bt_connected               = zmk_ble_active_profile_is_connected();
     widget_state.ble_profile   = zmk_ble_active_profile_index();
     widget_state.ble_connected = bt_connected;
 
@@ -334,7 +334,7 @@ int blecorne_central_widget_init(struct blecorne_central_widget *widget,
                          CANVAS_COLOR_FORMAT);
     lv_obj_align(canvas_bot, LV_ALIGN_TOP_LEFT, -44, 0);
 
-    bt_connected = zmk_ble_is_active_profile_connected();
+    bt_connected = zmk_ble_active_profile_is_connected();
 
     widget_state.battery_level = zmk_battery_state_of_charge();
     widget_state.charging      = zmk_usb_is_powered();

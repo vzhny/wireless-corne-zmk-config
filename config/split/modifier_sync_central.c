@@ -6,7 +6,9 @@
 #include <zephyr/logging/log.h>
 
 #include <zmk/events/keycode_state_changed.h>
+#include <zmk/events/layer_state_changed.h>
 #include <zmk/hid.h>
+#include <zmk/keymap.h>
 
 #include "split/modifier_sync.h"
 
@@ -100,16 +102,33 @@ BT_CONN_CB_DEFINE(mod_sync_conn_cb) = {
 
 /* ── Modifier state forwarding ───────────────────────────────────────── */
 
-static int keycode_event_cb(const zmk_event_t *eh) {
+static void send_mod_state(void) {
     if (!periph_conn || !mod_char_handle) {
-        return ZMK_EV_EVENT_BUBBLE;
+        return;
     }
     zmk_mod_flags_t full_mods = zmk_hid_get_explicit_mods();
     /* Extract right-side modifier bits (bits 4-7) into a nibble (bits 0-3) */
     uint8_t r_mods = (full_mods >> 4) & 0x0F;
-    bt_gatt_write_without_response(periph_conn, mod_char_handle, &r_mods, 1, false);
+    uint8_t active_layer = zmk_keymap_highest_layer_active();
+    bool is_mac = (active_layer == 1 || active_layer == 3);
+    /* Bit 4 carries the Mac/Win glyph-order flag; peripheral has no local
+     * keymap/layer state of its own to derive this. */
+    uint8_t payload = r_mods | (is_mac ? BIT(4) : 0);
+    bt_gatt_write_without_response(periph_conn, mod_char_handle, &payload, 1, false);
+}
+
+static int keycode_event_cb(const zmk_event_t *eh) {
+    send_mod_state();
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+static int layer_event_cb(const zmk_event_t *eh) {
+    send_mod_state();
     return ZMK_EV_EVENT_BUBBLE;
 }
 
 ZMK_LISTENER(mod_sync_keys, keycode_event_cb);
 ZMK_SUBSCRIPTION(mod_sync_keys, zmk_keycode_state_changed);
+
+ZMK_LISTENER(mod_sync_layer, layer_event_cb);
+ZMK_SUBSCRIPTION(mod_sync_layer, zmk_layer_state_changed);

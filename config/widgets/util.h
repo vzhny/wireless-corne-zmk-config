@@ -1,5 +1,6 @@
 #pragma once
 
+#include <zephyr/sys/util.h>
 #include <lvgl.h>
 
 #define CANVAS_SIZE 68

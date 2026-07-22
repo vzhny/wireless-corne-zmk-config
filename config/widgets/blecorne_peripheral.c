@@ -4,11 +4,9 @@
 
 #include <zmk/display.h>
 #include <zmk/events/battery_state_changed.h>
-#include <zmk/events/layer_state_changed.h>
 #include <zmk/events/split_peripheral_status_changed.h>
 #include <zmk/battery.h>
 #include <zmk/split/bluetooth/peripheral.h>
-#include <zmk/keymap.h>
 
 #include "util.h"
 #include "glyphs.h"
@@ -21,8 +19,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 struct peripheral_state {
     uint8_t battery_level;
     bool    connected;
-    uint8_t active_layer;
-    uint8_t r_mods; /* R-mod nibble: bit0=RCtrl, bit1=RShift, bit2=RAlt, bit3=RGUI */
+    bool    is_mac; /* Mac vs Win glyph order, forwarded by central over the sync GATT char */
+    uint8_t r_mods;  /* R-mod nibble: bit0=RCtrl, bit1=RShift, bit2=RAlt, bit3=RGUI */
 };
 
 static struct peripheral_state widget_state;
@@ -82,7 +80,7 @@ static void render_status_canvas(struct peripheral_state *state) {
 static void render_mod_canvas(struct peripheral_state *state) {
     clear_canvas(canvas_mid);
 
-    bool is_mac = (state->active_layer == 1 || state->active_layer == 3);
+    bool is_mac = state->is_mac;
     uint8_t r = state->r_mods;
 
     bool shift_active = !!(r & BIT(1));
@@ -135,8 +133,11 @@ static inline void display_submit(struct k_work *work) {
 
 /* ── Public modifier update (called by modifier_sync_peripheral) ─────── */
 
-void blecorne_peripheral_update_mods(uint8_t r_mods) {
-    widget_state.r_mods = r_mods;
+/* Bits 0-3: R-mod nibble. Bit 4: Mac/Win glyph-order flag (this half has no
+ * local keymap/layer state, so central forwards the flag it computed). */
+void blecorne_peripheral_update_mods(uint8_t payload) {
+    widget_state.r_mods = payload & 0x0F;
+    widget_state.is_mac = !!(payload & BIT(4));
     display_submit(&mod_render_work);
 }
 
@@ -158,24 +159,11 @@ static int split_event_cb(const zmk_event_t *eh) {
     return ZMK_EV_EVENT_BUBBLE;
 }
 
-static int layer_event_cb(const zmk_event_t *eh) {
-    const struct zmk_layer_state_changed *ev = as_zmk_layer_state_changed(eh);
-    if (ev == NULL) {
-        return ZMK_EV_EVENT_BUBBLE;
-    }
-    widget_state.active_layer = zmk_keymap_highest_layer_active();
-    display_submit(&mod_render_work); /* layer affects Mac vs Win glyph order */
-    return ZMK_EV_EVENT_BUBBLE;
-}
-
 ZMK_LISTENER(peri_battery, battery_event_cb);
 ZMK_SUBSCRIPTION(peri_battery, zmk_battery_state_changed);
 
 ZMK_LISTENER(peri_split, split_event_cb);
 ZMK_SUBSCRIPTION(peri_split, zmk_split_peripheral_status_changed);
-
-ZMK_LISTENER(peri_layer, layer_event_cb);
-ZMK_SUBSCRIPTION(peri_layer, zmk_layer_state_changed);
 
 /* ── Init ────────────────────────────────────────────────────────────── */
 
@@ -204,7 +192,7 @@ int blecorne_peripheral_widget_init(struct blecorne_peripheral_widget *widget,
 
     widget_state.battery_level = zmk_battery_state_of_charge();
     widget_state.connected     = zmk_split_bt_peripheral_is_connected();
-    widget_state.active_layer  = zmk_keymap_highest_layer_active();
+    widget_state.is_mac        = false;
     widget_state.r_mods        = 0;
 
     render_status_canvas(&widget_state);
