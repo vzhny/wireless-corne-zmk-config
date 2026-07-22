@@ -1,5 +1,19 @@
 on: [push, pull_request, workflow_dispatch]
 
 jobs:
+  vars:
+    runs-on: ubuntu-latest
+    outputs:
+      archive_name: ${{ steps.name.outputs.archive_name }}
+    steps:
+      - name: Compute archive name
+        id: name
+        run: |
+          ts=$(TZ="America/New_York" date +"%m%d%Y-%H%M%S")
+          echo "archive_name=${GITHUB_REF_NAME}-${ts}-firmware" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: vars
     uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@f84ef436cd8e88f9d1580a9b86bab2fae8d349c6
+    with:
+      archive_name: ${{ needs.vars.outputs.archive_name }}
