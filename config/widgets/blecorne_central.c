@@ -7,6 +7,7 @@
 #include <zmk/events/battery_state_changed.h>
 #include <zmk/events/usb_conn_state_changed.h>
 #include <zmk/events/keycode_state_changed.h>
+#include <zmk/events/position_state_changed.h>
 #include <zmk/events/ble_active_profile_changed.h>
 #include <zmk/keymap.h>
 #include <zmk/battery.h>
@@ -74,12 +75,27 @@ static const char *get_layer_name(uint8_t idx) {
     return (idx < LAYER_NAME_COUNT) ? layer_names[idx] : "???";
 }
 
-/* ── HID modifier masks ──────────────────────────────────────────────── */
+/* ── HID modifier masks ──────────────────────────────────────────────── *
+ * Standard HID modifier byte layout - bits 0-3 are the left-hand mods this
+ * half's own display reads, bits 4-7 are the right-hand mods forwarded to
+ * the peripheral (see modifier_sync_central.c). */
 
 #define MOD_LCTRL  BIT(0)
 #define MOD_LSHIFT BIT(1)
 #define MOD_LALT   BIT(2)
 #define MOD_LGUI   BIT(3)
+#define MOD_RCTRL  BIT(4)
+#define MOD_RSHIFT BIT(5)
+#define MOD_RALT   BIT(6)
+#define MOD_RGUI   BIT(7)
+
+/* Display-only approximation of "currently held" for the mod keys, since
+ * the real HID mod state can lag well behind the physical press for any
+ * hold-tap key - see the shadow-tracking section below for how this gets
+ * set. Combined with the real mods (state->mods | shadow_mods) wherever
+ * mods are shown or forwarded to the peripheral - never fed back into
+ * actual HID output. */
+static uint8_t shadow_mods = 0;
 
 /* ── Flash state ─────────────────────────────────────────────────────── *
  * One 500ms heartbeat drives every blink on this half: the BT icon while
@@ -264,7 +280,7 @@ static void render_mod_canvas(struct central_state *state) {
     canvas_draw_rect(canvas_mid, 0, CANVAS_SIZE - 1, CANVAS_SIZE, 1, &rule_dsc);
 
     bool is_mac = (state->active_layer == 1 || state->active_layer == 3);
-    uint32_t mods = state->mods;
+    uint32_t mods = state->mods | shadow_mods;
 
     bool shift_active = !!(mods & MOD_LSHIFT);
     bool ctrl_active  = !!(mods & MOD_LCTRL);
@@ -331,6 +347,111 @@ static inline void display_submit(struct k_work *work) {
 static void flash_work_cb(struct k_work *work) {
     flash_on = !flash_on;
     display_submit(&status_render_work);
+}
+
+/* ── Modifier shadow-tracking (display-only) ──────────────────────────── *
+ *
+ * Real HID mod state only updates once ZMK's hold-tap logic actually
+ * decides tap vs hold, which for "balanced" flavor can lag well behind the
+ * physical press (see CLAUDE.md's Homerow mods section for why). This
+ * watches raw key presses on the known modifier positions directly and
+ * manually lights up the display after that position's own
+ * tapping-term-ms, without waiting for the real decision - approximating
+ * "hold long enough and it's obviously a hold" the same way a person
+ * would judge it by eye.
+ *
+ * This is a deliberate approximation, not a substitute for the real HID
+ * state: it only ever adds bits to the display (shadow_mods), never to
+ * actual HID output, and it can disagree with the real decision - e.g. a
+ * quick type-through that resolves HOLD via an interrupt release before
+ * this timer fires won't light up here, and a position that's also part
+ * of a combo (see blecorne.keymap) can show a slightly late shadow light
+ * if that combo doesn't end up firing. Both are accepted trade-offs for
+ * getting real-time feedback out of a fundamentally non-instant mechanism.
+ *
+ * Position numbers and which logical mod each one is come straight from
+ * blecorne.keymap's homerow/thumb bindings - if those ever move, update
+ * this table too. */
+
+struct shadow_mod_slot {
+    uint32_t position;
+    uint32_t tapping_term_ms;
+    bool     swaps_with_mac; /* true for the two Ctrl/Gui-swap positions per hand */
+    uint8_t  bit_win;        /* bit when !swaps_with_mac, or when swaps_with_mac && !is_mac */
+    uint8_t  bit_mac;        /* bit when swaps_with_mac && is_mac (unused otherwise) */
+    bool     held;
+    bool     fired;
+    uint8_t  applied_bit;
+    struct k_work_delayable work;
+};
+
+static void shadow_slot_timeout(struct k_work *work);
+
+static struct shadow_mod_slot shadow_slots[] = {
+    /* Left homerow: A/S/D (Ctrl/Gui swap with Mac layers, Alt fixed) */
+    { .position = 13, .tapping_term_ms = 280, .swaps_with_mac = true,  .bit_win = MOD_LCTRL, .bit_mac = MOD_LGUI },
+    { .position = 14, .tapping_term_ms = 280, .swaps_with_mac = true,  .bit_win = MOD_LGUI,  .bit_mac = MOD_LCTRL },
+    { .position = 15, .tapping_term_ms = 280, .swaps_with_mac = false, .bit_win = MOD_LALT },
+    /* Right homerow: K/L/; (mirrors the left hand's swap) */
+    { .position = 20, .tapping_term_ms = 280, .swaps_with_mac = false, .bit_win = MOD_RALT },
+    { .position = 21, .tapping_term_ms = 280, .swaps_with_mac = true,  .bit_win = MOD_RGUI,  .bit_mac = MOD_RCTRL },
+    { .position = 22, .tapping_term_ms = 280, .swaps_with_mac = true,  .bit_win = MOD_RCTRL, .bit_mac = MOD_RGUI },
+    /* Thumb shift keys - never swap with Mac/Win */
+    { .position = 38, .tapping_term_ms = 225, .swaps_with_mac = false, .bit_win = MOD_LSHIFT },
+    { .position = 39, .tapping_term_ms = 225, .swaps_with_mac = false, .bit_win = MOD_RSHIFT },
+};
+#define SHADOW_SLOT_COUNT ARRAY_SIZE(shadow_slots)
+
+static void shadow_slot_timeout(struct k_work *work) {
+    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+    struct shadow_mod_slot *slot = CONTAINER_OF(dwork, struct shadow_mod_slot, work);
+    if (!slot->held) {
+        return; /* released before the timer fired - a tap, not a hold */
+    }
+    bool is_mac = (widget_state.active_layer == 1 || widget_state.active_layer == 3);
+    slot->applied_bit = (slot->swaps_with_mac && is_mac) ? slot->bit_mac : slot->bit_win;
+    slot->fired = true;
+    shadow_mods |= slot->applied_bit;
+    display_submit(&mod_render_work);
+}
+
+static int position_event_cb(const zmk_event_t *eh) {
+    const struct zmk_position_state_changed *ev = as_zmk_position_state_changed(eh);
+    if (ev == NULL) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    for (size_t i = 0; i < SHADOW_SLOT_COUNT; i++) {
+        struct shadow_mod_slot *slot = &shadow_slots[i];
+        if (slot->position != ev->position) {
+            continue;
+        }
+        if (ev->state) {
+            slot->held  = true;
+            slot->fired = false;
+            k_work_schedule(&slot->work, K_MSEC(slot->tapping_term_ms));
+        } else {
+            slot->held = false;
+            k_work_cancel_delayable(&slot->work);
+            if (slot->fired) {
+                slot->fired = false;
+                shadow_mods &= ~slot->applied_bit;
+                display_submit(&mod_render_work);
+            }
+        }
+        break;
+    }
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(central_position, position_event_cb);
+ZMK_SUBSCRIPTION(central_position, zmk_position_state_changed);
+
+/* Combined real+shadow mods, 8-bit HID shape (bits 0-3 left, 4-7 right) -
+ * used by modifier_sync_central.c to forward the right-hand nibble (with
+ * its shadow bits) to the peripheral, the same way it already forwards
+ * the real R-mod nibble. */
+uint8_t blecorne_central_get_display_mods(void) {
+    return (uint8_t)((widget_state.mods | shadow_mods) & 0xFF);
 }
 
 /* ── Event listeners ─────────────────────────────────────────────────── */
@@ -417,6 +538,10 @@ int blecorne_central_widget_init(struct blecorne_central_widget *widget,
     widget_state.ble_profile   = zmk_ble_active_profile_index();
 
     k_timer_start(&flash_timer, K_MSEC(500), K_MSEC(500));
+
+    for (size_t i = 0; i < SHADOW_SLOT_COUNT; i++) {
+        k_work_init_delayable(&shadow_slots[i].work, shadow_slot_timeout);
+    }
 
     render_status_canvas(&widget_state);
     render_mod_canvas(&widget_state);

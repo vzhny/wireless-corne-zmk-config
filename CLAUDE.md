@@ -423,25 +423,71 @@ held alone, or another ("interrupting") key is pressed *and released* while it's
 held. Critically, resolution happens on the interrupting key's **release**, not its
 press, and ZMK queues both keys' events internally until that decision is made - so
 neither reaches the display (or HID) until then. This is inherent to `"balanced"`, not
-something `hold-trigger-on-release` caused. `hml`/`hmr` keep `"balanced"` regardless
-(chosen deliberately for typing accuracy, not to be changed) - `hold-trigger-key-positions`
-gives same-hand/opposite-hand rolls an early-resolution path that sidesteps this for
-the common case, which is why homerow mods feel fine in practice.
+something `hold-trigger-on-release` caused, and it's still true after that fix.
 
-`thm` (thumb shift/key, tap = key, hold = modifier, tap-then-hold = repeat key):
-**`"hold-preferred"`** (not balanced), 225 ms tapping-term, 175 ms quick-tap, no
-`hold-trigger-key-positions`. Switched from balanced after confirming on hardware that
-holding a thumb-shift key while typing didn't light up (or apply) the modifier until
-releasing the interrupting key - `hold-preferred` resolves the instant an interrupting
-key is *pressed*, which is what real-time chorded-shortcut use needs. Trade-off: rolling
-this key with an adjacent one during fast normal typing is now more likely to register
-as a hold than a tap - if that becomes annoying in practice, that's the knob to revisit
-(tighten `tapping-term-ms`, or add `hold-trigger-key-positions` to exempt specific
-same-hand keys from early-hold resolution).
+`thm` (thumb shift/key, tap = key, hold = modifier, tap-then-hold = repeat key): also
+`"balanced"`, 225 ms tapping-term, 175 ms quick-tap. Briefly tried `"hold-preferred"`
+here to get faster resolution, but confirmed on hardware it didn't meaningfully help and
+made this key behave differently from `hml`/`hmr` for no real benefit - reverted.
+**Don't change `hml`/`hmr`/`thm`'s flavor, tapping-term, or other tap/hold timing** -
+these are tuned to how the user actually types and are deliberately out of scope for
+the "modifiers don't show in real time" problem; solve that on the display side (see
+below) instead of by changing what these keys actually do.
+
+### Modifier display (shadow-tracking)
+
+The mod cells don't wait for the real hold-tap decision at all - `blecorne_central.c`
+listens to raw `zmk_position_state_changed` events (fired the instant a physical key
+goes down/up, before any hold-tap/combo logic resolves it) for the known modifier key
+positions, and manually lights up that mod on the display after *that position's own*
+`tapping-term-ms`, entirely independent of whatever ZMK's real hold-tap decision
+eventually is. This is `shadow_mods` (a file-scope `uint8_t`, same 8-bit layout as a
+real HID mod byte) - OR'd with the real `state->mods` everywhere mods are read, both
+for this half's own display (`render_mod_canvas`) and for what gets forwarded to the
+peripheral (`blecorne_central_get_display_mods()`, used by
+`modifier_sync_central.c`'s `send_mod_state()` instead of reading
+`zmk_hid_get_explicit_mods()` directly).
+
+**This is a deliberate approximation, not real HID state, and can disagree with it:**
+- A quick type-through that resolves HOLD via `"balanced"`'s interrupt-release rule
+  before the shadow timer fires won't show lit even though the real hold did register.
+- A position that's also part of a combo (`combo_esc` shares 13, `combo_sqt` shares
+  21/22) can light up slightly late if that combo doesn't end up firing - ZMK briefly
+  captures the position event to see if the combo completes, then replays it once it
+  doesn't (with the original timestamp, so the *real* HID timing is unaffected, but our
+  shadow timer - armed on receipt, not on the original timestamp - starts a few ms late).
+- If a combo *does* fire using one of these positions, the position event is consumed
+  entirely and shadow-tracking never sees it - no phantom light in that case.
+
+Accepted trade-offs, not bugs - the point is a real-time-*feeling* indicator, not a
+perfectly accurate one. `hml`/`hmr`/`thm`'s actual tap/hold behavior (see Homerow mods
+above) is untouched by any of this.
+
+Position -> logical mod (from blecorne.keymap's homerow/thumb bindings - update this if
+those ever move):
+
+| Position | Win | Mac | Notes |
+|----------|-----|-----|-------|
+| 13 (L homerow, A) | LCtrl | LGui | swaps with `is_mac` |
+| 14 (L homerow, S) | LGui | LCtrl | swaps with `is_mac` |
+| 15 (L homerow, D) | LAlt | LAlt | fixed |
+| 20 (R homerow, K) | RAlt | RAlt | fixed |
+| 21 (R homerow, L) | RGui | RCtrl | swaps with `is_mac` |
+| 22 (R homerow, ;) | RCtrl | RGui | swaps with `is_mac` |
+| 38 (L thumb) | LShift | LShift | fixed |
+| 39 (R thumb) | RShift | RShift | fixed |
+
+Colemak vs Qwerty doesn't affect this table - the homerow mod bindings sit at the same
+physical positions in both layouts, only the letters underneath change.
 
 ### Caps Word
 
-Combo: both shift thumbs (positions 38+39), timeout 50 ms → `&caps_word`.
+Combo: both shift thumbs (positions 38+39), timeout 50 ms → `&caps_word`. Note: since
+shadow-tracking above watches raw presses on positions 38/39 independent of what combo
+they're part of, holding both thumbs together (which triggers this combo) will also
+light up both Shift cells as a side effect - not real caps-word state tracking (it
+won't stay lit for the rest of a caps-word-affected word), just what the generic
+per-position timer does when both of its thumb positions happen to be held together.
 
 ## Build & Flash
 

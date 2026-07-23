@@ -7,10 +7,10 @@
 
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
-#include <zmk/hid.h>
 #include <zmk/keymap.h>
 
 #include "split/modifier_sync.h"
+#include "widgets/blecorne_central.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -106,7 +106,10 @@ static void send_mod_state(void) {
     if (!periph_conn || !mod_char_handle) {
         return;
     }
-    zmk_mod_flags_t full_mods = zmk_hid_get_explicit_mods();
+    /* Real mods OR'd with the central widget's display-only shadow-tracked
+     * mods (see blecorne_central.c) - so the peripheral's mod cells get the
+     * same real-time approximation the left half's own display does. */
+    uint8_t full_mods = blecorne_central_get_display_mods();
     /* Extract right-side modifier bits (bits 4-7) into a nibble (bits 0-3) */
     uint8_t r_mods = (full_mods >> 4) & 0x0F;
     uint8_t active_layer = zmk_keymap_highest_layer_active();
