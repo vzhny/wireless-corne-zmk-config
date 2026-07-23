@@ -15,7 +15,10 @@
 #include <zmk/ble.h>
 
 #include "util.h"
-#include "glyphs.h"
+#include "fonts/pixel_operator_mono.h"
+#include "fonts/pixel_operator_mono_large.h"
+#include "fonts/icon_font.h"
+#include "fonts/status_icon_font.h"
 #include "blecorne_central.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -35,9 +38,9 @@ static struct central_state widget_state;
 
 /* ── Canvases ────────────────────────────────────────────────────────── */
 
-static lv_obj_t *canvas_top;    /* x=92  → physical bottom strip (layer name) */
-static lv_obj_t *canvas_mid;    /* x=24  → physical middle strip (modifiers)  */
-static lv_obj_t *canvas_bot;    /* x=-44 → physical top strip   (status)      */
+static lv_obj_t *canvas_top;    /* x=-44 → physical bottom strip, 24px visible (layer name) */
+static lv_obj_t *canvas_mid;    /* x=24  → physical middle strip (modifiers)                */
+static lv_obj_t *canvas_bot;    /* x=92 (TOP_RIGHT) → physical top strip (status)           */
 
 static uint8_t cbuf_top[CANVAS_BUF_SIZE];
 static uint8_t cbuf_mid[CANVAS_BUF_SIZE];
@@ -45,9 +48,15 @@ static uint8_t cbuf_bot[CANVAS_BUF_SIZE];
 
 /* ── Layer names ─────────────────────────────────────────────────────── */
 
+/* Layers 0-3 (Qwerty/Colemak x Win/Mac) all show "Base" - which keyboard
+ * layout is active is shown on the peripheral's layout row instead (see
+ * blecorne_peripheral.c), and Win/Mac is already shown by the modifier
+ * row's icons-vs-text (see render_mod_canvas), so the name itself doesn't
+ * need to carry either distinction. Also needed room for the larger layer
+ * name font - "Colemak (Win)"-style names never fit regardless of size. */
 static const char *layer_names[] = {
-    "Qwerty (Win)", "Qwerty (Mac)",
-    "Colemak (Win)", "Colemak (Mac)",
+    "Base", "Base",
+    "Base", "Base",
     "Num", "Nav", "Sym", "Admin", "Func",
 };
 
@@ -64,19 +73,24 @@ static const char *get_layer_name(uint8_t idx) {
 #define MOD_LALT   BIT(2)
 #define MOD_LGUI   BIT(3)
 
-/* ── BT flash state ──────────────────────────────────────────────────── */
+/* ── Flash state (500ms heartbeat, always running) ───────────────────── *
+ * Drives two independent blinks: the BT glyph while searching (bt_connected
+ * false) and the battery-empty glyph at <=5% (regardless of BT state) - one
+ * shared timer since both just need "on/off every 500ms", not a per-purpose
+ * schedule. Runs continuously rather than starting/stopping with BT state
+ * (used to stop on connect) since battery-empty needs it whether or not BT
+ * is connected. */
 
-static bool    bt_connected    = false;
-static bool    bt_flash_on     = true;
-static uint8_t connecting_dots = 1; /* 1..3, advances each 500ms tick while searching */
+static bool bt_connected = false;
+static bool flash_on     = true;
 
-static void bt_flash_work_cb(struct k_work *work);
-static K_WORK_DEFINE(bt_flash_work, bt_flash_work_cb);
+static void flash_work_cb(struct k_work *work);
+static K_WORK_DEFINE(flash_work, flash_work_cb);
 
-static void bt_flash_timer_cb(struct k_timer *t) {
-    k_work_submit(&bt_flash_work);
+static void flash_timer_cb(struct k_timer *t) {
+    k_work_submit(&flash_work);
 }
-static K_TIMER_DEFINE(bt_flash_timer, bt_flash_timer_cb, NULL);
+static K_TIMER_DEFINE(flash_timer, flash_timer_cb, NULL);
 
 /* ── Draw helpers ────────────────────────────────────────────────────── */
 
@@ -86,43 +100,133 @@ static void clear_canvas(lv_obj_t *canvas) {
     canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &r);
 }
 
+/* status_icon_font glyph (status row). `align` picks LEFT for the BT/wifi
+ * icon (hugs the left edge) or RIGHT for the battery/bolt icon (hugs the
+ * right edge, stacking directly above the right-aligned % text below it). */
+static void draw_status_icon(lv_obj_t *canvas, int x, int y, int w, const char *icon,
+                             bool active, lv_text_align_t align) {
+    lv_draw_label_dsc_t dsc;
+    init_label_dsc(&dsc, LVGL_FOREGROUND, &status_icon_font);
+    dsc.align = align;
+    dsc.opa   = active ? LV_OPA_COVER : LV_OPA_40;
+    canvas_draw_text(canvas, x, y, w, &dsc, icon);
+}
+
+/* ── Modifier cell (border box, invert-on-press) ──────────────────────── *
+ * Each modifier key is a 1px rounded-border box, always visible. Pressed
+ * ("active") state is shown by filling the box with foreground color and
+ * inverting the icon/text color inside it (a "lit key" look), replacing the
+ * old plain opacity fade. */
+
+#define MOD_BOX_W 30
+#define MOD_BOX_H 26
+
+static void draw_mod_box(lv_obj_t *canvas, int x, int y, bool active) {
+    lv_draw_rect_dsc_t dsc;
+    lv_draw_rect_dsc_init(&dsc);
+    dsc.radius       = 6;
+    dsc.border_width = 1;
+    dsc.border_color = LVGL_FOREGROUND;
+    dsc.border_opa   = LV_OPA_COVER;
+    dsc.bg_color     = LVGL_FOREGROUND;
+    dsc.bg_opa       = active ? LV_OPA_COVER : LV_OPA_TRANSP;
+    canvas_draw_rect(canvas, x, y, MOD_BOX_W, MOD_BOX_H, &dsc);
+}
+
+/* `icon_w` is the glyph's real ink width (ICON_*_W in icon_font.h), NOT the
+ * box width. LV_TEXT_ALIGN_CENTER alone under-centers these: lv_font_conv
+ * gives every glyph in this font the same adv_w (a made-up "monospace"
+ * advance, ~14px), but the actual icons are wider than that (16-20px) - so
+ * centering-by-advance-width places them noticeably off-center relative to
+ * their true ink. Centering manually against the real box_w instead (LEFT
+ * align at a computed x) fixes it. */
+static void draw_mod_icon(lv_obj_t *canvas, int x, int y, const char *icon, int icon_w, bool active) {
+    draw_mod_box(canvas, x, y, active);
+    lv_draw_label_dsc_t dsc;
+    init_label_dsc(&dsc, active ? LVGL_BACKGROUND : LVGL_FOREGROUND, &icon_font);
+    dsc.align = LV_TEXT_ALIGN_LEFT;
+    int content_x = x + (MOD_BOX_W - icon_w) / 2;
+    canvas_draw_text(canvas, content_x, y + 3, MOD_BOX_W, &dsc, icon);
+}
+
+static void draw_mod_text(lv_obj_t *canvas, int x, int y, const char *text, bool active) {
+    draw_mod_box(canvas, x, y, active);
+    lv_draw_label_dsc_t dsc;
+    init_label_dsc(&dsc, active ? LVGL_BACKGROUND : LVGL_FOREGROUND, &pixel_operator_mono);
+    dsc.align = LV_TEXT_ALIGN_CENTER;
+    canvas_draw_text(canvas, x, y + 6, MOD_BOX_W, &dsc, text);
+}
+
+/* Discrete battery level -> Font Awesome battery glyph. <=5% is handled by
+ * the caller separately (blinks via ICON_BATTERY_EMPTY, not shown solid). */
+static const char *battery_icon(uint8_t level) {
+    if (level > 75) return ICON_BATTERY_FULL;
+    if (level > 50) return ICON_BATTERY_3_4;
+    if (level > 25) return ICON_BATTERY_HALF;
+    return ICON_BATTERY_QUARTER;
+}
+
 /* ── Canvas renderers ────────────────────────────────────────────────── */
 
-/* canvas_bot (physical top strip, 24 px visible = canvas rows 0..23)
+/* canvas_bot (physical top strip) - NOT hardware-truncated (unlike
+ * canvas_top), full 68px budget available; only the first ~36 are used.
  *
- * Layout (canvas space) - confirmed against real hardware:
- *   Physical top row    → canvas y=0..11:   BT glyph x=0, battery x=16, % x=40
- *   Physical bottom row → canvas y=13..23:  BT profile "BT 0"-"BT 3" x=0
+ * Two rows: icons on row 1 (y=0), text on row 2 (y=20) - status_icon_font at
+ * size 18 (up from 12) needs more headroom than the old 24-row convention
+ * left, and this canvas has the room to spare. BT/"B n" left-aligned,
+ * battery/bolt/% right-aligned, `pixel_operator_mono_large` (same size as
+ * the layer name) for both, per row - see the field-width comment below for
+ * why the BT-profile label had to shrink to fit at that size.
  *
- * (Previous comment here had this backwards - canvas_cy=0 is physical top,
- * not bottom, for this rotation.)
+ * Battery icon (status_icon_font, real Font Awesome glyphs, not the old
+ * hand-drawn shell+fill rects) is one of five discrete levels rather than a
+ * continuous fill - see battery_icon(). At <=5% it's ICON_BATTERY_EMPTY,
+ * shown only while flash_on (blinks). While charging, the battery icon is
+ * replaced entirely by ICON_BOLT - no battery glyph drawn at all.
  */
 static void render_status_canvas(struct central_state *state) {
     clear_canvas(canvas_bot);
 
     lv_draw_label_dsc_t lbl;
-    init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_12);
+    init_label_dsc(&lbl, LVGL_FOREGROUND, &pixel_operator_mono_large);
 
-    /* Physical top row (canvas y=0..11): BT indicator left, battery+% right */
-    if (bt_connected || bt_flash_on) {
-        draw_glyph(canvas_bot, 0, 0, &glyph_bt, true);
+    /* Row 1 (y=0): BT icon top-left, battery/bolt icon top-right.
+     * BT icon is always visible (never disappears) - dim/grey when not
+     * connected (matching the peripheral's dim-wifi-when-disconnected
+     * treatment - see draw_wifi_icon in blecorne_peripheral.c), full white
+     * once connected. While searching (not yet connected) it blinks
+     * dim/bright every 500ms via flash_on instead of just sitting dim -
+     * that blink alone signals "still pairing", no separate text needed. */
+    draw_status_icon(canvas_bot, 0, 0, 24, ICON_BT, bt_connected || flash_on, LV_TEXT_ALIGN_LEFT);
+
+    if (state->charging) {
+        draw_status_icon(canvas_bot, 44, 0, 24, ICON_BOLT, true, LV_TEXT_ALIGN_RIGHT);
+    } else if (state->battery_level <= 5) {
+        if (flash_on) {
+            draw_status_icon(canvas_bot, 44, 0, 24, ICON_BATTERY_EMPTY, true, LV_TEXT_ALIGN_RIGHT);
+        }
+    } else {
+        draw_status_icon(canvas_bot, 44, 0, 24, battery_icon(state->battery_level), true, LV_TEXT_ALIGN_RIGHT);
     }
-    draw_battery(canvas_bot, 16, 1, state->battery_level, state->charging);
+
+    /* Row 2 (y=20): BT profile left (under the BT icon) once connected,
+     * otherwise blank; battery % right (under the battery icon), always.
+     * pixel_operator_mono_large is a fixed 10px/char, so both fields have to
+     * be sized off exact character counts, not guessed - "100%" (4 chars) is
+     * 40px wide, leaving only 28px for the left field if the two are to
+     * have any gap at all in the worst case. "BT %d" (5 chars, 50px) simply
+     * doesn't fit at this size - shortened to "B%d" (max "B4", 2 chars,
+     * 20px) so there's still 6px of daylight between the two fields. */
+    lbl.align = LV_TEXT_ALIGN_RIGHT;
     char batt_buf[6];
     snprintf(batt_buf, sizeof(batt_buf), "%d%%", state->battery_level);
-    canvas_draw_text(canvas_bot, 40, 0, 28, &lbl, batt_buf);
+    canvas_draw_text(canvas_bot, 28, 20, 40, &lbl, batt_buf);
 
-    /* Physical bottom row (canvas y≥13): BT profile, or "Connecting..." while searching */
     if (bt_connected) {
-        char profile_buf[6];
-        snprintf(profile_buf, sizeof(profile_buf), "BT %d", state->ble_profile);
-        canvas_draw_text(canvas_bot, 0, 13, 68, &lbl, profile_buf);
-    } else {
-        lv_draw_label_dsc_t conn_lbl;
-        init_label_dsc(&conn_lbl, LVGL_FOREGROUND, &lv_font_montserrat_10);
-        char conn_buf[14];
-        snprintf(conn_buf, sizeof(conn_buf), "Connecting%.*s", connecting_dots, "...");
-        canvas_draw_text(canvas_bot, 0, 14, 68, &conn_lbl, conn_buf);
+        lbl.align = LV_TEXT_ALIGN_LEFT;
+        char profile_buf[4];
+        snprintf(profile_buf, sizeof(profile_buf), "B%d", state->ble_profile);
+        canvas_draw_text(canvas_bot, 0, 20, 22, &lbl, profile_buf);
     }
 
     rotate_canvas(canvas_bot);
@@ -130,12 +234,27 @@ static void render_status_canvas(struct central_state *state) {
 
 /* canvas_mid (physical middle strip, 68 px)
  *
- * Modifier glyphs at canvas (gx, gy=27), step=17 px.
- * Win order: ⇧ ⌃ ⊞ Alt
- * Mac order: ⇧ ⌘ ⌃ ⌥   (GUI and Ctrl swapped relative to Win)
+ * Two rows of bordered modifier cells (MOD_BOX_W x MOD_BOX_H, see
+ * draw_mod_box()) - Shift+Ctrl on row 1 (y=6), GUI+Alt on row 2 (y=38),
+ * columns at x=4/x=36.
+ *
+ * Mac: all four cells are icon_font glyphs (real Material Design "Apple
+ * keyboard" + Font Awesome artwork via Nerd Fonts) - Shift, Ctrl, Cmd, Opt.
+ * Windows: only Shift stays an icon. Ctrl/GUI/Alt become plain text ("Ctrl"/
+ * "Win"/"Alt") instead, because real Windows keyboards print those as text
+ * on the keycap, not a symbol - unlike Mac, which does print ⌘/⌥/⌃ symbols.
  */
 static void render_mod_canvas(struct central_state *state) {
     clear_canvas(canvas_mid);
+
+    /* Section separators: this canvas occupies its full 68px budget with no
+     * hardware truncation (unlike status/layer), so a rule at y=0 and y=67
+     * lands exactly on the true physical boundary with the status strip
+     * above and the layer strip below - see CLAUDE.md's Canvas layout notes. */
+    lv_draw_rect_dsc_t rule_dsc;
+    init_rect_dsc(&rule_dsc, LVGL_FOREGROUND);
+    canvas_draw_rect(canvas_mid, 0, 0, CANVAS_SIZE, 1, &rule_dsc);
+    canvas_draw_rect(canvas_mid, 0, CANVAS_SIZE - 1, CANVAS_SIZE, 1, &rule_dsc);
 
     bool is_mac = (state->active_layer == 1 || state->active_layer == 3);
     uint32_t mods = state->mods;
@@ -145,73 +264,32 @@ static void render_mod_canvas(struct central_state *state) {
     bool gui_active   = !!(mods & MOD_LGUI);
     bool alt_active   = !!(mods & MOD_LALT);
 
-    int gx = 2, gy = 27, step = 17;
+    int x0 = 4, x1 = 36, y0 = 6, y1 = 38;
 
-    draw_glyph(canvas_mid, gx, gy, &glyph_sft, shift_active);
+    draw_mod_icon(canvas_mid, x0, y0, ICON_SHIFT, ICON_SHIFT_W, shift_active);
     if (is_mac) {
-        /* Mac: ⇧ ⌘ ⌃ ⌥ */
-        draw_glyph(canvas_mid, gx + step,     gy, &glyph_cmd,  gui_active);
-        draw_glyph(canvas_mid, gx + step * 2, gy, &glyph_ctrl, ctrl_active);
-        draw_glyph(canvas_mid, gx + step * 3, gy, &glyph_opt,  alt_active);
+        draw_mod_icon(canvas_mid, x1, y0, ICON_CTRL, ICON_CTRL_W, ctrl_active);
+        draw_mod_icon(canvas_mid, x0, y1, ICON_CMD,  ICON_CMD_W,  gui_active);
+        draw_mod_icon(canvas_mid, x1, y1, ICON_OPT,  ICON_OPT_W,  alt_active);
     } else {
-        /* Win: ⇧ ⌃ ⊞ Alt */
-        draw_glyph(canvas_mid, gx + step,     gy, &glyph_ctrl, ctrl_active);
-        draw_glyph(canvas_mid, gx + step * 2, gy, &glyph_win,  gui_active);
-        draw_glyph(canvas_mid, gx + step * 3, gy, &glyph_alt,  alt_active);
+        draw_mod_text(canvas_mid, x1, y0, "Ctrl", ctrl_active);
+        draw_mod_text(canvas_mid, x0, y1, "Win",  gui_active);
+        draw_mod_text(canvas_mid, x1, y1, "Alt",  alt_active);
     }
 
     rotate_canvas(canvas_mid);
 }
 
-/* canvas_top (physical bottom strip, 68 px)
- *
- * Layout (physical strip_y from top, canvas_cy = 67-strip_y):
- *   strip_y=8..17  : circle row 1 — layers 1-5  (canvas y=50, h=10)
- *   strip_y=21..30 : circle row 2 — layers 6-9  (canvas y=37, h=10)
- *   strip_y=40..55 : layer name centred          (canvas y=12, h=16)
- *
- * Circle n (1-indexed) fills when active_layer == n.
- * Circle 9 is always hollow (no layer 9 exists).
- *
- * Row 1 (5 circles, 10px, 3px gap): x = 3, 16, 29, 42, 55
- * Row 2 (4 circles, 10px, 3px gap): x = 10, 23, 36, 49
- */
+/* canvas_top (physical bottom strip, 24 px visible = canvas rows 0..23) -
+ * layer name only, no circles. y=5 (not vertically centered in the full 68px
+ * canvas) since only rows 0..23 actually reach the screen here. */
 static void render_layer_canvas(struct central_state *state) {
     clear_canvas(canvas_top);
 
-    uint8_t active = state->active_layer;
-    lv_draw_label_dsc_t num_lbl;
-    char num_str[3];
-
-    /* Row 1: layers 1–5, x=3,16,29,42,55 at canvas y=50 */
-    for (int i = 1; i <= 5; i++) {
-        int cx = 3 + (i - 1) * 13;
-        bool on = (active == i);
-        draw_circle(canvas_top, cx, 50, 10, on);
-        init_label_dsc(&num_lbl, on ? LVGL_BACKGROUND : LVGL_FOREGROUND,
-                       &lv_font_montserrat_10);
-        num_lbl.align = LV_TEXT_ALIGN_CENTER;
-        snprintf(num_str, sizeof(num_str), "%d", i);
-        canvas_draw_text(canvas_top, cx, 51, 10, &num_lbl, num_str);
-    }
-
-    /* Row 2: layers 6–9, x=10,23,36,49 at canvas y=37 (9 always hollow) */
-    for (int i = 6; i <= 9; i++) {
-        int cx = 10 + (i - 6) * 13;
-        bool on = (active == i);
-        draw_circle(canvas_top, cx, 37, 10, on);
-        init_label_dsc(&num_lbl, on ? LVGL_BACKGROUND : LVGL_FOREGROUND,
-                       &lv_font_montserrat_10);
-        num_lbl.align = LV_TEXT_ALIGN_CENTER;
-        snprintf(num_str, sizeof(num_str), "%d", i);
-        canvas_draw_text(canvas_top, cx, 38, 10, &num_lbl, num_str);
-    }
-
-    /* Layer name */
     lv_draw_label_dsc_t lbl;
-    init_label_dsc(&lbl, LVGL_FOREGROUND, &lv_font_montserrat_16);
+    init_label_dsc(&lbl, LVGL_FOREGROUND, &pixel_operator_mono_large);
     lbl.align = LV_TEXT_ALIGN_CENTER;
-    canvas_draw_text(canvas_top, 0, 12, CANVAS_SIZE, &lbl,
+    canvas_draw_text(canvas_top, 0, 5, CANVAS_SIZE, &lbl,
                      get_layer_name(state->active_layer));
 
     rotate_canvas(canvas_top);
@@ -241,11 +319,10 @@ static inline void display_submit(struct k_work *work) {
     }
 }
 
-/* ── BT flash work item (submitted by timer, runs on system workq) ───── */
+/* ── Flash work item (submitted by timer, runs on system workq) ───────── */
 
-static void bt_flash_work_cb(struct k_work *work) {
-    bt_flash_on     = !bt_flash_on;
-    connecting_dots = (connecting_dots % 3) + 1;
+static void flash_work_cb(struct k_work *work) {
+    flash_on = !flash_on;
     display_submit(&status_render_work);
 }
 
@@ -283,14 +360,9 @@ static int ble_event_cb(const zmk_event_t *eh) {
     widget_state.ble_profile   = zmk_ble_active_profile_index();
     widget_state.ble_connected = bt_connected;
 
-    if (bt_connected) {
-        k_timer_stop(&bt_flash_timer);
-        bt_flash_on = true;
-    } else {
-        bt_flash_on     = true; /* start visible so first visible frame shows icon */
-        connecting_dots = 1;    /* restart dot animation at "Connecting." */
-        k_timer_start(&bt_flash_timer, K_MSEC(500), K_MSEC(500));
-    }
+    /* flash_timer runs continuously (see its declaration) - no start/stop
+     * here. render_status_canvas's `bt_connected || flash_on` already shows
+     * the icon solid once connected regardless of flash_on's value. */
 
     display_submit(&status_render_work);
     return ZMK_EV_EVENT_BUBBLE;
@@ -321,7 +393,7 @@ int blecorne_central_widget_init(struct blecorne_central_widget *widget,
     canvas_top = lv_canvas_create(widget->obj);
     lv_canvas_set_buffer(canvas_top, cbuf_top, CANVAS_SIZE, CANVAS_SIZE,
                          CANVAS_COLOR_FORMAT);
-    lv_obj_align(canvas_top, LV_ALIGN_TOP_RIGHT, 0, 0);
+    lv_obj_align(canvas_top, LV_ALIGN_TOP_LEFT, -44, 0);
 
     canvas_mid = lv_canvas_create(widget->obj);
     lv_canvas_set_buffer(canvas_mid, cbuf_mid, CANVAS_SIZE, CANVAS_SIZE,
@@ -331,7 +403,7 @@ int blecorne_central_widget_init(struct blecorne_central_widget *widget,
     canvas_bot = lv_canvas_create(widget->obj);
     lv_canvas_set_buffer(canvas_bot, cbuf_bot, CANVAS_SIZE, CANVAS_SIZE,
                          CANVAS_COLOR_FORMAT);
-    lv_obj_align(canvas_bot, LV_ALIGN_TOP_LEFT, -44, 0);
+    lv_obj_align(canvas_bot, LV_ALIGN_TOP_RIGHT, 0, 0);
 
     bt_connected = zmk_ble_active_profile_is_connected();
 
@@ -342,9 +414,7 @@ int blecorne_central_widget_init(struct blecorne_central_widget *widget,
     widget_state.ble_connected = bt_connected;
     widget_state.ble_profile   = zmk_ble_active_profile_index();
 
-    if (!bt_connected) {
-        k_timer_start(&bt_flash_timer, K_MSEC(500), K_MSEC(500));
-    }
+    k_timer_start(&flash_timer, K_MSEC(500), K_MSEC(500));
 
     render_status_canvas(&widget_state);
     render_mod_canvas(&widget_state);

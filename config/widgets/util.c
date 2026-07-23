@@ -13,38 +13,6 @@ void rotate_canvas(lv_obj_t *canvas) {
                       LV_DISPLAY_ROTATION_270, CANVAS_COLOR_FORMAT);
 }
 
-void draw_battery(lv_obj_t *canvas, int x, int y, uint8_t level, bool charging) {
-    lv_draw_rect_dsc_t rect_dsc;
-    lv_draw_line_dsc_t line_dsc;
-    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
-    init_line_dsc(&line_dsc, LVGL_FOREGROUND, 1);
-
-    /* outer shell: 22×10 */
-    rect_dsc.bg_opa = LV_OPA_TRANSP;
-    rect_dsc.border_width = 1;
-    rect_dsc.border_color = LVGL_FOREGROUND;
-    canvas_draw_rect(canvas, x, y, 22, 10, &rect_dsc);
-
-    /* nub */
-    rect_dsc.border_width = 0;
-    rect_dsc.bg_opa = LV_OPA_COVER;
-    canvas_draw_rect(canvas, x + 22, y + 3, 2, 4, &rect_dsc);
-
-    /* fill */
-    uint8_t fill_w = (level * 20) / 100;
-    if (fill_w > 0) {
-        canvas_draw_rect(canvas, x + 1, y + 1, fill_w, 8, &rect_dsc);
-    }
-
-    /* charging bolt — drawn in BACKGROUND color so it's visible on the filled bar */
-    if (charging) {
-        lv_draw_line_dsc_t bolt_dsc;
-        init_line_dsc(&bolt_dsc, LVGL_BACKGROUND, 1);
-        lv_point_t pts[] = {{x + 12, y + 2}, {x + 10, y + 5}, {x + 12, y + 5}, {x + 10, y + 8}};
-        canvas_draw_line(canvas, pts, 4, &bolt_dsc);
-    }
-}
-
 void init_label_dsc(lv_draw_label_dsc_t *dsc, lv_color_t color, const lv_font_t *font) {
     lv_draw_label_dsc_init(dsc);
     dsc->color = color;
@@ -57,12 +25,6 @@ void init_rect_dsc(lv_draw_rect_dsc_t *dsc, lv_color_t color) {
     dsc->bg_opa = LV_OPA_COVER;
     dsc->border_width = 0;
     dsc->radius = 0;
-}
-
-void init_line_dsc(lv_draw_line_dsc_t *dsc, lv_color_t color, uint8_t width) {
-    lv_draw_line_dsc_init(dsc);
-    dsc->color = color;
-    dsc->width = width;
 }
 
 /* LVGL v9 removed the lv_canvas_draw_* convenience wrappers used by an
@@ -88,59 +50,3 @@ void canvas_draw_rect(lv_obj_t *canvas, int x, int y, int w, int h,
     lv_canvas_finish_layer(canvas, &layer);
 }
 
-void canvas_draw_line(lv_obj_t *canvas, lv_point_t points[], uint16_t count,
-                      lv_draw_line_dsc_t *dsc) {
-    lv_layer_t layer;
-    lv_canvas_init_layer(canvas, &layer);
-    for (uint16_t i = 0; i + 1 < count; i++) {
-        dsc->p1.x = points[i].x;
-        dsc->p1.y = points[i].y;
-        dsc->p2.x = points[i + 1].x;
-        dsc->p2.y = points[i + 1].y;
-        lv_draw_line(&layer, dsc);
-    }
-    lv_canvas_finish_layer(canvas, &layer);
-}
-
-void canvas_draw_img(lv_obj_t *canvas, int x, int y, const void *src,
-                     lv_draw_image_dsc_t *dsc) {
-    dsc->src = src;
-    const lv_image_dsc_t *img = src;
-    lv_area_t area = {.x1 = x, .y1 = y,
-                      .x2 = x + img->header.w - 1, .y2 = y + img->header.h - 1};
-    lv_layer_t layer;
-    lv_canvas_init_layer(canvas, &layer);
-    lv_draw_image(&layer, dsc, &area);
-    lv_canvas_finish_layer(canvas, &layer);
-}
-
-void draw_circle(lv_obj_t *canvas, int x, int y, int size, bool filled) {
-    lv_draw_rect_dsc_t dsc;
-    lv_draw_rect_dsc_init(&dsc);
-    dsc.radius = LV_RADIUS_CIRCLE;
-    if (filled) {
-        dsc.bg_color   = LVGL_FOREGROUND;
-        dsc.bg_opa     = LV_OPA_COVER;
-        dsc.border_width = 0;
-    } else {
-        dsc.bg_opa       = LV_OPA_TRANSP;
-        dsc.border_color = LVGL_FOREGROUND;
-        dsc.border_opa   = LV_OPA_COVER;
-        dsc.border_width = 1;
-    }
-    canvas_draw_rect(canvas, x, y, size, size, &dsc);
-}
-
-void draw_glyph(lv_obj_t *canvas, int x, int y,
-                const lv_image_dsc_t *glyph, bool active) {
-    lv_draw_image_dsc_t img_dsc;
-    lv_draw_image_dsc_init(&img_dsc);
-    /* LVGL's L8 recolor path (lv_draw_sw_img.c) ignores recolor_opa
-     * entirely and uses the bitmap's own byte value as an alpha mask for
-     * `recolor` instead - active/inactive fade has to go through the
-     * image's overall opa, not recolor_opa. */
-    img_dsc.recolor     = LVGL_FOREGROUND;
-    img_dsc.recolor_opa = LV_OPA_COVER;
-    img_dsc.opa         = active ? LV_OPA_COVER : LV_OPA_40;
-    canvas_draw_img(canvas, x, y, glyph, &img_dsc);
-}

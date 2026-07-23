@@ -110,10 +110,12 @@ static void send_mod_state(void) {
     /* Extract right-side modifier bits (bits 4-7) into a nibble (bits 0-3) */
     uint8_t r_mods = (full_mods >> 4) & 0x0F;
     uint8_t active_layer = zmk_keymap_highest_layer_active();
-    bool is_mac = (active_layer == 1 || active_layer == 3);
-    /* Bit 4 carries the Mac/Win glyph-order flag; peripheral has no local
-     * keymap/layer state of its own to derive this. */
-    uint8_t payload = r_mods | (is_mac ? BIT(4) : 0);
+    bool is_mac     = (active_layer == 1 || active_layer == 3);
+    bool is_colemak = (active_layer == 2 || active_layer == 3);
+    /* Bit 4: Mac/Win glyph-order flag. Bit 5: Qwerty/Colemak flag (drives
+     * the peripheral's layout-name row). Peripheral has no local keymap/
+     * layer state of its own to derive either from. */
+    uint8_t payload = r_mods | (is_mac ? BIT(4) : 0) | (is_colemak ? BIT(5) : 0);
     bt_gatt_write_without_response(periph_conn, mod_char_handle, &payload, 1, false);
 }
 
