@@ -24,12 +24,14 @@ extern const lv_font_t icon_font;
  * arrow-with-roof shape, visibly heavier-stroked than the "Ctl"/"Win"/"Alt"
  * text and the other 3 (thin-lined) icons once actually seen on real
  * hardware - this font has no outlined/thin variant of that specific
- * house-shaped glyph. First tried md-chevron_up (U+F0143, thin, matches
- * weight) but it and ICON_CTRL (also a simple "^" shape) then looked nearly
- * identical at this size - hard to tell the two mod cells apart at a
- * glance. Settled on fa-angles_up (U+F102, a double chevron "^^") - still
- * thin-stroked, but visually distinct from Ctrl's single caret. */
-#define ICON_SHIFT   "\xef\x84\x82" /* U+F102  fa-angles_up */
+ * house-shaped glyph. Tried md-chevron_up (U+F0143, thin, matches weight)
+ * but it and ICON_CTRL (also a simple "^" shape) then looked nearly
+ * identical at this size. Tried fa-angles_up (U+F102, double chevron "^^",
+ * distinct from Ctrl) next. Settled on md-arrow_up (U+F005D) - thin-stroked
+ * like the other 3, and a closer match to the actual Mac ⇧ glyph shape
+ * (arrowhead + stem) than either chevron option, while still reading as
+ * clearly different from Ctrl's bare caret. */
+#define ICON_SHIFT   "\xf3\xb0\x81\x9d" /* U+F005D md-arrow_up */
 #define ICON_CTRL    "\xf3\xb0\x98\xb4" /* U+F0634 md-apple_keyboard_control */
 #define ICON_CMD     "\xf3\xb0\x98\xb3" /* U+F0633 md-apple_keyboard_command */
 #define ICON_OPT     "\xf3\xb0\x98\xb5" /* U+F0635 md-apple_keyboard_option */
@@ -40,7 +42,7 @@ extern const lv_font_t icon_font;
  * alone doesn't work here. All 4 have ofs_x=0 (no left bearing to account
  * for) - ICON_*_OFS_X kept (all 0) so draw_mod_icon()'s centering math
  * doesn't need a special case if a future icon swap does have bearing. */
-#define ICON_SHIFT_W 17
+#define ICON_SHIFT_W 16
 #define ICON_CTRL_W  16
 #define ICON_CMD_W   20
 #define ICON_OPT_W   18

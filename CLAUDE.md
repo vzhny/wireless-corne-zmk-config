@@ -175,7 +175,7 @@ Unicode Miscellaneous Technical symbols anyway.
 
 | Symbol | Macro | Codepoint | Source glyph | ink width (`ICON_*_W`) |
 |--------|-------|-----------|--------------|------------------------|
-| ⇧⇧ Shift | `ICON_SHIFT` | U+F102 | `fa-angles_up` | 17 |
+| ⇧ Shift | `ICON_SHIFT` | U+F005D | `md-arrow_up` | 16 |
 | ⌃ Ctrl | `ICON_CTRL` | U+F0634 | `md-apple_keyboard_control` (shared Win+Mac) | 16 |
 | ⌘ Cmd | `ICON_CMD` | U+F0633 | `md-apple_keyboard_command` | 20 |
 | ⌥ Opt | `ICON_OPT` | U+F0635 | `md-apple_keyboard_option` | 18 |
@@ -183,14 +183,16 @@ Unicode Miscellaneous Technical symbols anyway.
 `ICON_SHIFT` isn't `md-apple_keyboard_shift` (U+F0636) anymore - that glyph is a
 solid/filled arrow-with-roof shape, visibly heavier-stroked than the "Ctl"/"Win"/"Alt"
 text and the other 3 (thin-lined) icons, confirmed on real hardware. This font has no
-outlined/thin variant of that specific shape. `md-chevron_up` (U+F0143) fixed the
-stroke weight but then looked nearly identical to `ICON_CTRL` (also a plain "^") at
-this size - hard to tell the two cells apart at a glance. `fa-angles_up` (a double
-chevron, "^^") is the fix: thin-stroked like the rest, but still visually distinct
-from Ctrl's single caret. If a source glyph is ever swapped again, actually render and
-compare it (`fillText` on a `@font-face`'d span, not just the Nerd Fonts name) rather
-than assuming - "looks about right" from the name alone is exactly how the original
-`md-bolt` mixup (see Fonts below, status row) and this one both happened.
+outlined/thin variant of that specific shape. Went through two intermediate choices
+before landing here: `md-chevron_up` (U+F0143) fixed the stroke weight but then
+looked nearly identical to `ICON_CTRL` (also a plain "^") at this size; `fa-angles_up`
+(U+F102, a double chevron "^^") fixed that but was a poorer match for the actual Mac ⇧
+glyph shape. `md-arrow_up` (arrowhead + stem) is thin-stroked like the rest, distinct
+from Ctrl's bare caret, and closer to what ⇧ actually looks like. If a source glyph is
+ever swapped again, actually render and compare it (`fillText` on a `@font-face`'d
+span, not just the Nerd Fonts name) rather than assuming - "looks about right" from
+the name alone is exactly how the original `md-bolt` mixup (see Fonts below, status
+row) and this one both happened.
 
 `fa-windows` (U+F17A, formerly `ICON_WIN`) was dropped from the conversion entirely -
 nothing ever referenced it, since Windows shows "Win" as text (see below), never an icon.
