@@ -31,19 +31,20 @@ struct peripheral_state {
 
 static struct peripheral_state widget_state;
 
-/* ── Canvases ────────────────────────────────────────────────────────── */
-
-static lv_obj_t *canvas_top;    /* x=-44 → physical bottom strip (layout name) */
-static lv_obj_t *canvas_mid;    /* x=24  → physical middle strip (mods)        */
-static lv_obj_t *canvas_bot;    /* x=92 (TOP_RIGHT) → physical top strip (status) */
+/* ── Canvases ────────────────────────────────────────────────────────── *
+ * See blecorne_central.c's canvas comment for how these x offsets map to
+ * physical display strips. */
+static lv_obj_t *canvas_top;    /* x=-44 -> bottom strip (layout name) */
+static lv_obj_t *canvas_mid;    /* x=24  -> middle strip (mods)        */
+static lv_obj_t *canvas_bot;    /* x=92 (TOP_RIGHT) -> top strip (status) */
 
 static uint8_t cbuf_top[CANVAS_BUF_SIZE];
 static uint8_t cbuf_mid[CANVAS_BUF_SIZE];
 static uint8_t cbuf_bot[CANVAS_BUF_SIZE];
 
-/* ── Flash state (500ms heartbeat, always running) ───────────────────── *
- * Only used for the battery-empty blink at <=5% - see blecorne_central.c's
- * fuller comment (this half has no BT-searching state of its own to blink). */
+/* ── Flash state ─────────────────────────────────────────────────────── *
+ * Drives the wifi icon's blink while disconnected and the battery-empty
+ * blink at <=5% - see blecorne_central.c for the fuller rationale. */
 
 static bool flash_on = true;
 
@@ -73,10 +74,9 @@ static void draw_status_icon(lv_obj_t *canvas, int x, int y, int w, const char *
     canvas_draw_text(canvas, x, y, w, &dsc, icon);
 }
 
-/* Wifi/connection icon only, one size down (status_icon_font_wifi, size 16
- * vs status_icon_font's 18) - it's the widest glyph in the shared status
- * icon font and read as crowding this corner at the same size as BT/
- * battery/bolt on the other half. */
+/* Connection icon, drawn from its own smaller font (status_icon_font_wifi,
+ * size 16 vs status_icon_font's 18) - it's the widest glyph in the shared
+ * status icon font and reads better a size down in this corner. */
 static void draw_wifi_icon(lv_obj_t *canvas, int x, int y, int w, bool active,
                            lv_text_align_t align) {
     lv_draw_label_dsc_t dsc;
@@ -133,16 +133,11 @@ static const char *battery_icon(uint8_t level) {
 
 /* ── Canvas renderers ────────────────────────────────────────────────── */
 
-/* canvas_bot (physical top strip) - NOT hardware-truncated, full 68px
- * budget available - see blecorne_central.c's render_status_canvas comment.
- *
- * Two rows, matching blecorne_central.c: wifi/battery icons on row 1 (y=0),
- * battery % on row 2 (y=20, right-aligned under the battery icon, larger
- * font). No left side on row 2 - this half has no BT-profile-style text to
- * show there. Wifi (status_icon_font_wifi, size 16 - see draw_wifi_icon)
- * always visible - dim/grey when not connected, full white when connected,
- * the same treatment BT now gets on the central half (see its comment).
- */
+/* canvas_bot: status strip. Same two-row layout as blecorne_central.c -
+ * connection icon top-left, battery icon top-right, battery % text below
+ * it. No BT-profile-equivalent text on this half, so row 2's left side
+ * stays blank. The x offsets are hardware-calibrated the same way
+ * central's are - see that file's render_status_canvas comment. */
 static void render_status_canvas(struct peripheral_state *state) {
     clear_canvas(canvas_bot);
 
@@ -150,17 +145,16 @@ static void render_status_canvas(struct peripheral_state *state) {
     init_label_dsc(&lbl, LVGL_FOREGROUND, &pixel_operator_mono_large);
     lbl.align = LV_TEXT_ALIGN_RIGHT;
 
-    /* Battery icon is one of five discrete Font Awesome levels (see
-     * battery_icon()); at <=5% it blinks (ICON_BATTERY_EMPTY, flash_on
-     * only) instead of showing solid - same flash_timer as central.
-     *
-     * Wifi icon: connected -> always solid. Disconnected -> blinks via
-     * flash_on rather than sitting dim - this is a 1-bit display, there is
-     * no "dim", so LV_OPA_40 renders as fully invisible, not grey. Blinking
-     * is the only way to distinguish "searching" from "off" on this
-     * hardware. */
+    /* Connection icon is always drawn: full brightness once connected,
+     * blinking via flash_on while searching for central - same reasoning
+     * as the BT icon in blecorne_central.c (this is a 1-bit display, so
+     * "dim" isn't renderable; blinking is what signals "searching"). */
     draw_wifi_icon(canvas_bot, 3, 3, 24, state->connected || flash_on, LV_TEXT_ALIGN_LEFT);
 
+    /* Battery icon is one of five discrete Font Awesome levels (see
+     * battery_icon()); at <=5% it blinks (ICON_BATTERY_EMPTY, flash_on
+     * only) instead of showing solid - same flash_timer as the connection
+     * icon above. */
     if (state->battery_level <= 5) {
         if (flash_on) {
             draw_status_icon(canvas_bot, 36, 0, 24, ICON_BATTERY_EMPTY, true, LV_TEXT_ALIGN_RIGHT);
@@ -169,9 +163,6 @@ static void render_status_canvas(struct peripheral_state *state) {
         draw_status_icon(canvas_bot, 36, 0, 24, battery_icon(state->battery_level), true, LV_TEXT_ALIGN_RIGHT);
     }
 
-    /* % text stays flush with the canvas's right edge (x=28,w=40 -> ends at
-     * 68), matching central's battery % position exactly - only the icon
-     * above needed to move left to stop it clipping off the edge. */
     char batt_buf[6];
     snprintf(batt_buf, sizeof(batt_buf), "%d%%", state->battery_level);
     canvas_draw_text(canvas_bot, 28, 20, 40, &lbl, batt_buf);
@@ -219,15 +210,12 @@ static void render_mod_canvas(struct peripheral_state *state) {
     rotate_canvas(canvas_mid);
 }
 
-/* canvas_top (physical bottom strip, 24 px visible = canvas rows 0..23) -
- * keyboard layout name ("Qwerty"/"Colmak"), forwarded by central over the
- * same sync GATT char as is_mac (this half has no local keymap state to
- * derive it from). Was intentionally blank - free space, now used since
- * this row otherwise showed nothing on this half. Same font and y as
- * central's layer name (pixel_operator_mono_large, y=5) so the two halves
- * read as a matching pair. pixel_operator_mono_large is a fixed 10px/char,
- * so "Colemak" (7 chars, 70px) clips off the 68px canvas - "Colmak" (6
- * chars, 60px) matches "Qwerty"'s width exactly. */
+/* canvas_top (24 px visible, see canvas comment above) - keyboard layout
+ * name, forwarded by central over the same sync GATT char as is_mac (this
+ * half has no local keymap state to derive it from). Same font and y as
+ * central's layer name so the two halves read as a matching pair.
+ * "Colmak" rather than "Colemak" - pixel_operator_mono_large is a fixed
+ * 10px/char, and "Colemak" (7 chars, 70px) doesn't fit the 68px canvas. */
 static void render_layout_canvas(struct peripheral_state *state) {
     clear_canvas(canvas_top);
 

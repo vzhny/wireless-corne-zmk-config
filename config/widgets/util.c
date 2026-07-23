@@ -27,9 +27,8 @@ void init_rect_dsc(lv_draw_rect_dsc_t *dsc, lv_color_t color) {
     dsc->radius = 0;
 }
 
-/* LVGL v9 removed the lv_canvas_draw_* convenience wrappers used by an
- * earlier API version this file was originally written against - draw onto
- * a canvas now goes through a layer + the generic lv_draw_* functions. */
+/* LVGL v9 has no lv_canvas_draw_* convenience wrappers - drawing onto a
+ * canvas goes through a layer + the generic lv_draw_* functions instead. */
 
 void canvas_draw_text(lv_obj_t *canvas, int x, int y, int w,
                       lv_draw_label_dsc_t *dsc, const char *txt) {

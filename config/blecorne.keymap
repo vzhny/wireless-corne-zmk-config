@@ -40,12 +40,10 @@
         };
 
         /* Thumb shift/key: tap = key, hold = modifier, tap-then-hold = repeat key.
-         * hold-preferred (not balanced): resolves the instant another key is
-         * pressed while held, instead of waiting for that key's release -
-         * needed so the shift modifier (and its display indicator) update
-         * in real time while typing. Trade-off: rolling this thumb key with
-         * an adjacent key while typing normally is now more likely to
-         * register as a hold than a tap - watch for that. */
+         * hold-preferred so the modifier resolves (and the display updates)
+         * the instant another key is pressed, not on that key's release.
+         * Trade-off: rolling this key with an adjacent one while typing
+         * fast is more likely to register as a hold than a tap. */
         thm: thm {
             compatible = "zmk,behavior-hold-tap";
             #binding-cells = <2>;
@@ -59,16 +57,14 @@
     conditional_layers {
         compatible = "zmk,conditional-layers";
 
-        /* Holding NUM (mo 4) + FUNC (mo 7) simultaneously activates ADMIN.
-         * Costs no dedicated thumb. Mac toggle in ADMIN resets on power cycle —
-         * keyboard always boots in Windows mode, which is intended.
+        /* Holding NUM (mo 4) + FUNC (mo 7) activates ADMIN; so does NUM + NAV.
+         * Neither needs a dedicated thumb key.
          *
-         * ADMIN must be the highest-numbered layer (8) here, above FUNC (7) -
-         * the display picks whichever active layer has the highest index
-         * (zmk_keymap_highest_layer_active()), so if ADMIN's index were lower
-         * than FUNC's, holding NUM+FUNC would activate ADMIN's bindings but
-         * the display would still show "Func" (the numerically-higher of the
-         * two simultaneously-active layers) instead of "Admin". */
+         * ADMIN's layer index (8) must stay higher than every layer it can
+         * combine with (FUNC=7, NAV=5): the display shows whichever active
+         * layer has the highest index, so a lower-numbered conditional
+         * layer would take effect for key bindings but never show up on
+         * screen. */
 
         admin {
             if-layers = <4 7>;
@@ -243,9 +239,7 @@
             >;
         };
 
-        /* FUNC — must stay numerically lower than ADMIN (see conditional_layers
-         * above for why layer index order matters here, not just which
-         * physical key activates which layer). */
+        /* FUNC — must stay numerically lower than ADMIN, see conditional_layers above. */
 
         func_layer {
             display-name = "Function Keys";

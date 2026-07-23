@@ -53,7 +53,7 @@ function btSvg(vis){
 }
 
 function btSvgAnimated(){
-  // Icon blinks via JS toggling .bt-connecting-icon opacity (matches 500ms bt_flash_timer)
+  // Icon blinks via JS toggling .bt-connecting-icon opacity (matches the 500ms flash_timer)
   return '<div class="bt bt-connecting-icon"><svg width="10" height="18" viewBox="0 0 10 18" fill="none">'
     +'<line x1="5" y1="1" x2="5" y2="17" stroke="var(--display-fg)" stroke-width="1.5"/>'
     +'<polyline points="5,2 9,6 5,10" stroke="var(--display-fg)" stroke-width="1.5" fill="none" stroke-linejoin="round"/>'
@@ -178,7 +178,7 @@ document.getElementById('root').innerHTML =
   + '<div><div class="col-title">Right half &middot; peripheral</div><div class="states-col">'+right.join('')+'</div></div>';
 
 /* Live demo of the "connecting" state: BT icon blinks on the same 500ms tick
-   as bt_flash_timer/bt_flash_on in blecorne_central.c - no text, the flashing
+   as flash_timer/flash_on in blecorne_central.c - no text, the flashing
    icon alone is the "still pairing" indicator. */
 var connectOn = true;
 setInterval(function(){

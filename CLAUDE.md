@@ -109,12 +109,10 @@ confirming on real hardware it does something.
 config/
   blecorne.conf               — Kconfig values (display, BLE)
   blecorne.keymap             — Keymap (layers 0-8, combos, HRMs)
-  boot_led.c                  — Boot flash: blinks blue_led (P1.09) 5× at SYS_INIT APPLICATION 5
-  CMakeLists.txt              — Build sources (boot_led + display widgets)
+  CMakeLists.txt              — Build sources (display widgets)
   custom_status_screen.c      — ZMK display entry point
   widgets/
-    util.h / util.c           — rotate_canvas, canvas_draw_* primitives (no draw_battery
-                                anymore - battery is icon_font glyphs now, see Fonts below)
+    util.h / util.c           — rotate_canvas, canvas_draw_* primitives
     fonts/
       pixel_operator_mono.h/.c       — "Ctl"/"Win"/"Alt" mod-cell text only, size 16
       pixel_operator_mono_large.h/.c — Layer name, layout name, BT profile/battery %, size 20

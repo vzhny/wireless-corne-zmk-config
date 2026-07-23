@@ -271,12 +271,8 @@ canvas.actual-canvas {
 // config/widgets/fonts/icon_font.h. No more hand-typed 0/1 bitmap arrays.
 const ICONS = {
   // Modifier row (icon_font.h equivalent, drawn at ICON_SIZE_MOD)
-  shift: '\u{F005D}', // md-arrow_up (was md-apple_keyboard_shift U+F0636, a
-                       // solid/filled shape too thick vs the text/other 3
-                       // icons; md-chevron_up U+F0143 fixed the weight but
-                       // looked identical to ICON_CTRL's "^"; fa-angles_up
-                       // U+F102 fixed that but arrow_up is closer to the
-                       // real Mac ⇧ shape while still reading distinct)
+  shift: '\u{F005D}', // md-arrow_up - thin-stroked, matches the mod text's
+                       // weight, and distinct from ICON_CTRL's caret shape
   ctrl:  '\u{F0634}', // md-apple_keyboard_control
   cmd:   '\u{F0633}', // md-apple_keyboard_command
   opt:   '\u{F0635}', // md-apple_keyboard_option
@@ -304,14 +300,12 @@ const CANVAS_SIZE = 68;
 const PHYS_W = 68, PHYS_H = 160;
 const BASE_TOP = 0, BASE_MID = 68, BASE_BOT = 136;
 
-// Func(7)/Admin(8) order matches blecorne.keymap - ADMIN must be the higher
-// index there so zmk_keymap_highest_layer_active() resolves to it (not
-// Func) when both are simultaneously active - see conditional_layers.
+// Order must match blecorne.keymap's layer indices - see its
+// conditional_layers comment for why Admin has to stay numerically above Func.
 const LAYER_NAMES = ["Base","Base","Base","Base","Num","Nav","Sym","Func","Admin"];
 
 // LVGL_BACKGROUND/FOREGROUND per config/widgets/util.h - plain black ink on
-// white background (there used to be a color-inversion Kconfig toggle here;
-// removed, it never did anything visible on real hardware).
+// white background.
 const FG = 0;   // black ink
 const BG = 255; // white background
 
@@ -456,15 +450,12 @@ function rasterizeIconInk(icon, sizePx, boxW, boxH, align, edgeX, topPad) {
 // Status row: icon's ink edge lands at the canvas edge (x=0 for BT/wifi,
 // x=CANVAS_SIZE for battery/bolt), inset by `edgeInset` px - the same edge
 // the text field below it is anchored to (see renderCentral/
-// renderPeripheral), so icon and text line up. `edgeInset`/`topPad` default
-// to 0/2; both are real-hardware-calibrated nudges for specific icons (see
-// call sites) - the exact-ink-measured position this function computes is
-// otherwise correct, but doesn't account for a small hardware-specific
-// offset real testing found on the actual nice!view module. Raster spans
-// the full CANVAS_SIZE width (not just a narrow per-icon field) so wide
-// glyphs (wifi, box_w=21) can never clip against the raster's own canvas
-// boundary - that was the real cause of the wifi icon clipping in the
-// mockup, not the buffer/composite step.
+// renderPeripheral), so icon and text line up. `edgeInset`/`topPad` (default
+// 0/2) are real-hardware calibration nudges for specific icons - see call
+// sites and the matching x/y values in blecorne_central.c/
+// blecorne_peripheral.c. Raster spans the full CANVAS_SIZE width (not a
+// narrow per-icon field) so wide glyphs can never clip against the raster's
+// own canvas boundary.
 function drawIcon(buf, icon, active, align, size, edgeInset, topPad) {
   edgeInset = edgeInset || 0;
   const edgeX = align === 'right' ? CANVAS_SIZE - edgeInset : edgeInset;
@@ -521,18 +512,16 @@ function renderCentral(state) {
   {
     const buf = makeCanvasBuf();
     clearCanvas(buf);
-    // BT icon is always visible (never disappears) - grey/dim when not
-    // connected, full white when connected, matching the wifi icon's
-    // dim-for-off/bright-for-on treatment on the peripheral. While
-    // searching (not yet connected) it blinks dim/bright every 500ms via
-    // flash_on instead of just being dim the whole time.
+    // BT icon is always visible: full brightness once connected, blinking
+    // every 500ms via flash_on while still searching (this is a 1-bit
+    // display, so "dim" isn't renderable - blinking is the only way to
+    // show "searching" instead of "off").
     drawIcon(buf, ICONS.bt, state.btConnected || state.btFlashOn, 'left');
     // Battery: one of five discrete Font Awesome levels (batteryIcon()), not
     // a continuous fill. <=5% shows battEmpty (blinks on real hardware via
     // flash_on - this static preview just always shows it). Charging
-    // replaces the battery icon entirely with the bolt glyph. edgeInset=4:
-    // real hardware showed this icon sitting slightly past the true right
-    // edge - nudged in to match blecorne_central.c's x=40 (was 44).
+    // replaces the battery icon entirely with the bolt glyph. edgeInset=4
+    // matches blecorne_central.c's x=40 (a real-hardware calibration nudge).
     if (state.charging) {
       drawIcon(buf, ICONS.bolt, true, 'right', undefined, 4);
     } else if (state.battery <= 5) {
@@ -580,13 +569,12 @@ function renderCentral(state) {
     compositeCanvas(physBuf, buf, BASE_MID);
   }
 
-  // canvas_top: layer name only (circles removed - too small to read
-  // reliably). Layers 0-3 all show "Base" - Win/Mac is shown by the
-  // modifier row's icons-vs-text, Qwerty/Colemak by the peripheral's
-  // layout row - drawn bigger (fontPx 16, was 13) for readability, which is
-  // exactly why those distinctions moved elsewhere ("Colemak (Win)"-style
-  // names never fit at any size). This slot is hardware-truncated to 24
-  // visible rows, so text sits at y=5, not vertically centered.
+  // canvas_top: layer name, centered. Layers 0-3 all show "Base" - Win/Mac
+  // is shown by the modifier row's icons-vs-text instead, Qwerty/Colemak by
+  // the peripheral's layout row - there's no room for a full
+  // "Colemak (Win)"-style name at a readable size. This slot is
+  // hardware-truncated to 24 visible rows, so text sits at y=5, not
+  // vertically centered in the full canvas.
   {
     const buf = makeCanvasBuf();
     clearCanvas(buf);
@@ -609,24 +597,21 @@ function renderPeripheral(state) {
   {
     const buf = makeCanvasBuf();
     clearCanvas(buf);
-    // edgeInset=3/topPad=5 (was 0/2): real hardware showed this icon
-    // touching the physical top-left corner - nudged down and right to
-    // match blecorne_peripheral.c's x=3,y=3 (was 0,0).
-    // Disconnected -> blinks via flashOn instead of sitting dim: this is a
-    // 1-bit display, LV_OPA_40 renders as fully invisible, not grey.
+    // Connection icon is always visible: full brightness once connected,
+    // blinking via flashOn while searching - same reasoning as the BT icon
+    // in renderCentral. edgeInset=3/topPad=5 matches blecorne_peripheral.c's
+    // x=3,y=3 (a real-hardware calibration nudge, see that file's comment).
     drawIcon(buf, ICONS.wifi, state.connected || state.flashOn, 'left', ICON_SIZE_WIFI, 3, 5);
-    // edgeInset=8 (was 0): real hardware (this half has an actual battery)
-    // showed this icon clipping off the right edge - matches
-    // blecorne_peripheral.c's x=36 (was 44), a bigger correction than
-    // central's charging icon needed (see its comment).
+    // edgeInset=8 matches blecorne_peripheral.c's x=36 - this half's
+    // battery icon needed a bigger edge correction than central's charging
+    // icon (see that file's comment).
     if (state.battery <= 5) {
       drawIcon(buf, ICONS.battEmpty, true, 'right', undefined, 8);
     } else {
       drawIcon(buf, batteryIcon(state.battery), true, 'right', undefined, 8);
     }
-    // Text stays flush with the canvas edge (x=28,w=40 -> ends at 68),
-    // matching central's battery % position - only the icon above needed
-    // to move left to stop it clipping off the edge.
+    // % text stays flush with the canvas edge (x=28,w=40 -> ends at 68),
+    // matching central's battery % position exactly.
     drawText(buf, 28, 20, 40, `${state.battery}%`, 16, 'right');
     compositeCanvas(physBuf, buf, BASE_TOP);
   }
@@ -654,10 +639,9 @@ function renderPeripheral(state) {
 
   // canvas_top: keyboard layout name ("Qwerty"/"Colmak") - forwarded by
   // central the same way is_mac is (this half has no local keymap state).
-  // Was intentionally blank (free, unused space). Same font/size/y as
-  // central's layer name (fontPx 16, y=5) so the two halves read as a pair.
-  // "Colemak" (7 chars) clips at this font size - "Colmak" (6 chars)
-  // matches "Qwerty"'s width.
+  // Same font/size/y as central's layer name (fontPx 16, y=5) so the two
+  // halves read as a pair. "Colmak" not "Colemak" - the full spelling
+  // (7 chars) doesn't fit at this font size.
   {
     const buf = makeCanvasBuf();
     clearCanvas(buf);
