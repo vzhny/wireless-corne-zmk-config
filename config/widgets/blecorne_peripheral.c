@@ -154,13 +154,12 @@ static void render_status_canvas(struct peripheral_state *state) {
      * battery_icon()); at <=5% it blinks (ICON_BATTERY_EMPTY, flash_on
      * only) instead of showing solid - same flash_timer as central.
      *
-     * x=3,y=3 (was 0,0) - real hardware showed the wifi icon touching the
-     * physical top-left corner; nudged down and right off the edge.
-     * Battery icon/text moved left 8px (was x=44/x=28) - real hardware
-     * (this half has an actual battery installed) showed it clipping off
-     * the right edge of the display, worse than central's charging icon
-     * (see its comment) needed. */
-    draw_wifi_icon(canvas_bot, 3, 3, 24, state->connected, LV_TEXT_ALIGN_LEFT);
+     * Wifi icon: connected -> always solid. Disconnected -> blinks via
+     * flash_on rather than sitting dim - this is a 1-bit display, there is
+     * no "dim", so LV_OPA_40 renders as fully invisible, not grey. Blinking
+     * is the only way to distinguish "searching" from "off" on this
+     * hardware. */
+    draw_wifi_icon(canvas_bot, 3, 3, 24, state->connected || flash_on, LV_TEXT_ALIGN_LEFT);
 
     if (state->battery_level <= 5) {
         if (flash_on) {
@@ -170,9 +169,12 @@ static void render_status_canvas(struct peripheral_state *state) {
         draw_status_icon(canvas_bot, 36, 0, 24, battery_icon(state->battery_level), true, LV_TEXT_ALIGN_RIGHT);
     }
 
+    /* % text stays flush with the canvas's right edge (x=28,w=40 -> ends at
+     * 68), matching central's battery % position exactly - only the icon
+     * above needed to move left to stop it clipping off the edge. */
     char batt_buf[6];
     snprintf(batt_buf, sizeof(batt_buf), "%d%%", state->battery_level);
-    canvas_draw_text(canvas_bot, 20, 20, 40, &lbl, batt_buf);
+    canvas_draw_text(canvas_bot, 28, 20, 40, &lbl, batt_buf);
 
     rotate_canvas(canvas_bot);
 }
@@ -218,13 +220,14 @@ static void render_mod_canvas(struct peripheral_state *state) {
 }
 
 /* canvas_top (physical bottom strip, 24 px visible = canvas rows 0..23) -
- * keyboard layout name ("Qwerty"/"Colemak"), forwarded by central over the
+ * keyboard layout name ("Qwerty"/"Colmak"), forwarded by central over the
  * same sync GATT char as is_mac (this half has no local keymap state to
  * derive it from). Was intentionally blank - free space, now used since
  * this row otherwise showed nothing on this half. Same font and y as
  * central's layer name (pixel_operator_mono_large, y=5) so the two halves
- * read as a matching pair; "Qwerty"/"Colemak" (not "QWERTY"/"COLEMAK-DH")
- * so it actually fits at that size. */
+ * read as a matching pair. pixel_operator_mono_large is a fixed 10px/char,
+ * so "Colemak" (7 chars, 70px) clips off the 68px canvas - "Colmak" (6
+ * chars, 60px) matches "Qwerty"'s width exactly. */
 static void render_layout_canvas(struct peripheral_state *state) {
     clear_canvas(canvas_top);
 
@@ -232,7 +235,7 @@ static void render_layout_canvas(struct peripheral_state *state) {
     init_label_dsc(&lbl, LVGL_FOREGROUND, &pixel_operator_mono_large);
     lbl.align = LV_TEXT_ALIGN_CENTER;
     canvas_draw_text(canvas_top, 0, 5, CANVAS_SIZE, &lbl,
-                     state->is_colemak ? "Colemak" : "Qwerty");
+                     state->is_colemak ? "Colmak" : "Qwerty");
 
     rotate_canvas(canvas_top);
 }

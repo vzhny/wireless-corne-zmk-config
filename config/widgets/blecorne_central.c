@@ -173,6 +173,20 @@ static const char *battery_icon(uint8_t level) {
     return ICON_BATTERY_QUARTER;
 }
 
+/* Friendly 2-character names for specific BT profile slots, so the status
+ * row can show e.g. "WL" instead of "B0" for profiles the user re-pairs to
+ * the same device every time. Profiles without an alias here just fall
+ * back to "B<n>". Update this table (not the keymap) if a profile gets
+ * re-paired to a different device. */
+static const char *profile_alias(uint8_t profile) {
+    switch (profile) {
+        case 0: return "WL"; /* Work laptop */
+        case 1: return "MB"; /* MacBook */
+        case 2: return "iP"; /* iPad */
+        default: return NULL;
+    }
+}
+
 /* ── Canvas renderers ────────────────────────────────────────────────── */
 
 /* canvas_bot (physical top strip) - NOT hardware-truncated (unlike
@@ -234,7 +248,12 @@ static void render_status_canvas(struct central_state *state) {
     if (bt_connected) {
         lbl.align = LV_TEXT_ALIGN_LEFT;
         char profile_buf[4];
-        snprintf(profile_buf, sizeof(profile_buf), "B%d", state->ble_profile);
+        const char *alias = profile_alias(state->ble_profile);
+        if (alias) {
+            snprintf(profile_buf, sizeof(profile_buf), "%s", alias);
+        } else {
+            snprintf(profile_buf, sizeof(profile_buf), "B%d", state->ble_profile);
+        }
         canvas_draw_text(canvas_bot, 0, 20, 22, &lbl, profile_buf);
     }
 

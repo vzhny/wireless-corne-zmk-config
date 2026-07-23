@@ -39,11 +39,17 @@
             bindings = <&kp>, <&kp>;
         };
 
-        /* Thumb shift/key: tap = key, hold = modifier, tap-then-hold = repeat key */
+        /* Thumb shift/key: tap = key, hold = modifier, tap-then-hold = repeat key.
+         * hold-preferred (not balanced): resolves the instant another key is
+         * pressed while held, instead of waiting for that key's release -
+         * needed so the shift modifier (and its display indicator) update
+         * in real time while typing. Trade-off: rolling this thumb key with
+         * an adjacent key while typing normally is now more likely to
+         * register as a hold than a tap - watch for that. */
         thm: thm {
             compatible = "zmk,behavior-hold-tap";
             #binding-cells = <2>;
-            flavor = "balanced";
+            flavor = "hold-preferred";
             tapping-term-ms = <225>;
             quick-tap-ms = <175>;
             bindings = <&kp>, <&kp>;

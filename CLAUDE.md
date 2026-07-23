@@ -409,20 +409,37 @@ BT-profile equivalent), just the right-aligned `%`.
 
 ### Homerow mods
 
-`hml` (left) / `hmr` (right): balanced flavor, 280 ms tapping-term, 175 ms quick-tap, 150 ms require-prior-idle.
+`hml` (left) / `hmr` (right): balanced flavor, 280 ms tapping-term, 175 ms quick-tap,
+150 ms require-prior-idle, `hold-trigger-key-positions` (opposite hand + thumbs).
 
-**No `hold-trigger-on-release`.** It used to be set on both, but that flag defers the
-tap/hold decision until the hold-tap key itself is released instead of resolving via
-the tapping-term timeout or an opposite-hand `hold-trigger-key-positions` press -
-confirmed on real hardware this made the display only light up a held modifier *after*
-releasing it, and made holding multiple homerow mods at once resolve one at a time
-instead of simultaneously (each one only "landing" on its own release). Removed so
-mods resolve and report to HID (and the display) the instant they're held, and so
-multiple can be held together for chorded shortcuts. `hold-trigger-key-positions`
-(opposite-hand + thumbs) is unrelated and stays - that's what lets a same-hand key
-resolve a hold early without waiting for the full tapping term.
+**No `hold-trigger-on-release`** (removed from both). That flag deferred the tap/hold
+decision until the hold-tap key itself was released, instead of resolving via the
+tapping-term timeout or an opposite-hand `hold-trigger-key-positions` press - confirmed
+on real hardware this made the display only light up a held modifier *after* releasing
+it, and made holding multiple homerow mods resolve one at a time instead of
+simultaneously.
 
-`thm` (thumb shift/key, tap = key, hold = modifier): balanced flavor, 225 ms tapping-term, 175 ms quick-tap.
+That fix was necessary but not sufficient - ZMK's `"balanced"` flavor itself only
+resolves a hold-tap key in one of two ways: the tapping-term timeout elapses while it's
+held alone, or another ("interrupting") key is pressed *and released* while it's still
+held. Critically, resolution happens on the interrupting key's **release**, not its
+press, and ZMK queues both keys' events internally until that decision is made - so
+neither reaches the display (or HID) until then. This is inherent to `"balanced"`, not
+something `hold-trigger-on-release` caused. `hml`/`hmr` keep `"balanced"` regardless
+(chosen deliberately for typing accuracy, not to be changed) - `hold-trigger-key-positions`
+gives same-hand/opposite-hand rolls an early-resolution path that sidesteps this for
+the common case, which is why homerow mods feel fine in practice.
+
+`thm` (thumb shift/key, tap = key, hold = modifier, tap-then-hold = repeat key):
+**`"hold-preferred"`** (not balanced), 225 ms tapping-term, 175 ms quick-tap, no
+`hold-trigger-key-positions`. Switched from balanced after confirming on hardware that
+holding a thumb-shift key while typing didn't light up (or apply) the modifier until
+releasing the interrupting key - `hold-preferred` resolves the instant an interrupting
+key is *pressed*, which is what real-time chorded-shortcut use needs. Trade-off: rolling
+this key with an adjacent one during fast normal typing is now more likely to register
+as a hold than a tap - if that becomes annoying in practice, that's the knob to revisit
+(tighten `tapping-term-ms`, or add `hold-trigger-key-positions` to exempt specific
+same-hand keys from early-hold resolution).
 
 ### Caps Word
 

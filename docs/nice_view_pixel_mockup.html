@@ -410,6 +410,13 @@ function batteryIcon(level) {
   return ICONS.battQtr;
 }
 
+// Friendly names for specific BT profile slots (see profile_alias() in
+// blecorne_central.c) - profiles without an entry here fall back to "B<n>".
+const PROFILE_ALIASES = { 0: 'WL', 1: 'MB', 2: 'iP' };
+function profileLabel(profile) {
+  return PROFILE_ALIASES[profile] ?? `B${profile}`;
+}
+
 // All text: real PixelOperatorMono font (config/widgets/fonts/pixel_operator_mono.c),
 // bpp=1 pixel font, no antialiasing to threshold/blur on this monochrome
 // display - always foreground now that layer-number circles (the only thing
@@ -537,7 +544,7 @@ function renderCentral(state) {
     // Blank while searching - the flashing BT glyph above is the only "still
     // pairing" indicator, no "Connecting..." text.
     if (state.btConnected) {
-      drawText(buf, 0, 20, 22, `B${state.btProfile}`, 16, 'left');
+      drawText(buf, 0, 20, 22, profileLabel(state.btProfile), 16, 'left');
     }
     compositeCanvas(physBuf, buf, BASE_TOP);
   }
@@ -605,7 +612,9 @@ function renderPeripheral(state) {
     // edgeInset=3/topPad=5 (was 0/2): real hardware showed this icon
     // touching the physical top-left corner - nudged down and right to
     // match blecorne_peripheral.c's x=3,y=3 (was 0,0).
-    drawIcon(buf, ICONS.wifi, state.connected, 'left', ICON_SIZE_WIFI, 3, 5);
+    // Disconnected -> blinks via flashOn instead of sitting dim: this is a
+    // 1-bit display, LV_OPA_40 renders as fully invisible, not grey.
+    drawIcon(buf, ICONS.wifi, state.connected || state.flashOn, 'left', ICON_SIZE_WIFI, 3, 5);
     // edgeInset=8 (was 0): real hardware (this half has an actual battery)
     // showed this icon clipping off the right edge - matches
     // blecorne_peripheral.c's x=36 (was 44), a bigger correction than
@@ -615,7 +624,10 @@ function renderPeripheral(state) {
     } else {
       drawIcon(buf, batteryIcon(state.battery), true, 'right', undefined, 8);
     }
-    drawText(buf, 20, 20, 40, `${state.battery}%`, 16, 'right');
+    // Text stays flush with the canvas edge (x=28,w=40 -> ends at 68),
+    // matching central's battery % position - only the icon above needed
+    // to move left to stop it clipping off the edge.
+    drawText(buf, 28, 20, 40, `${state.battery}%`, 16, 'right');
     compositeCanvas(physBuf, buf, BASE_TOP);
   }
 
@@ -640,14 +652,16 @@ function renderPeripheral(state) {
     compositeCanvas(physBuf, buf, BASE_MID);
   }
 
-  // canvas_top: keyboard layout name ("Qwerty"/"Colemak") - forwarded by
+  // canvas_top: keyboard layout name ("Qwerty"/"Colmak") - forwarded by
   // central the same way is_mac is (this half has no local keymap state).
   // Was intentionally blank (free, unused space). Same font/size/y as
   // central's layer name (fontPx 16, y=5) so the two halves read as a pair.
+  // "Colemak" (7 chars) clips at this font size - "Colmak" (6 chars)
+  // matches "Qwerty"'s width.
   {
     const buf = makeCanvasBuf();
     clearCanvas(buf);
-    drawText(buf, 0, 5, 68, state.isColemak ? 'Colemak' : 'Qwerty', 16, 'center');
+    drawText(buf, 0, 5, 68, state.isColemak ? 'Colmak' : 'Qwerty', 16, 'center');
     compositeCanvas(physBuf, buf, BASE_BOT, 23);
   }
 
@@ -687,6 +701,7 @@ function readCentralState() {
 function readPeripheralState() {
   return {
     connected: document.getElementById('p_connected').checked,
+    flashOn: true, // static preview - real hardware blinks this every 500ms
     battery: parseInt(document.getElementById('p_battery').value, 10),
     isMac: document.getElementById('p_is_mac').checked,
     isColemak: document.getElementById('p_is_colemak').checked,
