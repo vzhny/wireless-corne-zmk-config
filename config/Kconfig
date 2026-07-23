@@ -1,4 +1,0 @@
-config NICE_VIEW_WIDGET_INVERTED
-	bool "Invert nice!view widget colors (black background, white ink)"
-	default n
-	depends on ZMK_DISPLAY

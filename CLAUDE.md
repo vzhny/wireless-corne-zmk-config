@@ -90,24 +90,24 @@ Two independent constraints here, easy to conflate:
   silently clipped, same as it would be for status content.
 
 - Canvas is 68×68 px, L8 format; byte values follow `LVGL_FOREGROUND`/`LVGL_BACKGROUND`
-  (util.h) — with `CONFIG_NICE_VIEW_WIDGET_INVERTED=y` (this project's default),
-  background=`0x00`, ink=`0xFF`
+  (util.h) — plain `lv_color_black()`/`lv_color_white()`, background=`0xFF`, ink=`0x00`
 - `canvas_bot` isn't hardware-truncated (see above) so it isn't limited to 24 rows in
   practice - it currently draws through about row 36 (icon row at `y=0`, text row at
   `y=20`) now that the status icons/text have grown, well within its full budget
 - After drawing, call `rotate_canvas()` (270° CW via `lv_draw_sw_rotate`)
-- `CONFIG_NICE_VIEW_WIDGET_INVERTED=y` → `LVGL_BACKGROUND=black`, `LVGL_FOREGROUND=white`.
-  Declared in `config/Kconfig`, wired in via `zephyr/module.yml`'s `build.kconfig` key —
-  without that wiring the symbol is silently never defined and `IS_ENABLED()` is always
-  false, same failure class as the `build.cmake` bug in the debug history.
+
+There used to be a `NICE_VIEW_WIDGET_INVERTED` Kconfig symbol here (black background,
+white ink) - removed. It never actually changed what showed up on real hardware (still
+light background/dark ink either way, whatever the real nice!view driver does under the
+hood), so `LVGL_BACKGROUND`/`LVGL_FOREGROUND` are now just plain white/black - no
+Kconfig, no `IS_ENABLED()` branch. Don't re-add a color-inversion toggle without first
+confirming on real hardware it does something.
 
 ### Key source files
 
 ```
 config/
-  Kconfig                      — Declares custom symbols (e.g. NICE_VIEW_WIDGET_INVERTED);
-                                  sourced via zephyr/module.yml's build.kconfig key
-  blecorne.conf               — Kconfig values (display, BLE, inverted)
+  blecorne.conf               — Kconfig values (display, BLE)
   blecorne.keymap             — Keymap (layers 0-8, combos, HRMs)
   boot_led.c                  — Boot flash: blinks blue_led (P1.09) 5× at SYS_INIT APPLICATION 5
   CMakeLists.txt              — Build sources (boot_led + display widgets)
@@ -116,7 +116,7 @@ config/
     util.h / util.c           — rotate_canvas, canvas_draw_* primitives (no draw_battery
                                 anymore - battery is icon_font glyphs now, see Fonts below)
     fonts/
-      pixel_operator_mono.h/.c       — "Ctrl"/"Win"/"Alt" mod-cell text only, size 16
+      pixel_operator_mono.h/.c       — "Ctl"/"Win"/"Alt" mod-cell text only, size 16
       pixel_operator_mono_large.h/.c — Layer name, layout name, BT profile/battery %, size 20
       icon_font.h/.c                 — Modifier-row icons (shift/ctrl/cmd/opt), size 24
       status_icon_font.h/.c          — Status-row icons (bt/wifi/battery*5/bolt), size 18
@@ -147,7 +147,7 @@ gets whichever size actually fits it, rather than compromising on one:
 
 | Font | Size | `adv_w`/`line_height` | Used for |
 |------|------|------------------------|----------|
-| `pixel_operator_mono` | 16 | 8px/char, 13px | "Ctrl"/"Win"/"Alt" mod-cell text only |
+| `pixel_operator_mono` | 16 | 8px/char, 13px | "Ctl"/"Win"/"Alt" mod-cell text only |
 | `pixel_operator_mono_large` | 20 | 10px/char, 16px | Layer name, peripheral's layout name, BT profile/battery `%` - bigger for readability |
 
 There used to be a third, `pixel_operator_mono_small` (size 10), for the peripheral's
@@ -231,8 +231,10 @@ four.** Real Windows keyboards print "Ctrl"/"Win"/"Alt" as **text** on the keyca
 a symbol - Mac keyboards do print ⌘/⌥/⌃ symbols (and, less commonly, ⇧), so Mac stays
 all-icon. `render_mod_canvas` branches on `is_mac`: Mac calls `draw_mod_icon()` for
 Shift/Ctrl/Cmd/Opt; Windows calls `draw_mod_icon()` for Shift only and `draw_mod_text()`
-(`"Ctrl"`/`"Win"`/`"Alt"`, `pixel_operator_mono`) for the rest. This is a deliberate
-asymmetry, not a gap to fill later - don't "fix" Windows to use icons for consistency.
+(`"Ctl"`/`"Win"`/`"Alt"`, `pixel_operator_mono`) for the rest - "Ctrl" (4 chars) wraps
+onto a second line at this box/font size, so it's "Ctl" (3 chars, matching "Win"/"Alt")
+instead. This is a deliberate asymmetry, not a gap to fill later - don't "fix" Windows
+to use icons for consistency.
 
 Battery is `status_icon_font` glyphs now, not hand-drawn rects - `draw_battery` was
 removed from `util.c` entirely. `battery_icon()` (in each widget .c) picks one of five
@@ -302,7 +304,7 @@ flips.
 static const char *layer_names[] = {
     "Base", "Base",
     "Base", "Base",
-    "Num", "Nav", "Sym", "Admin", "Func",
+    "Num", "Nav", "Sym", "Func", "Admin",
 };
 ```
 
@@ -314,6 +316,17 @@ shown by the modifier row's icons-vs-text (see Fonts above), Qwerty vs Colemak b
 peripheral's new layout-name row (see Modifier sync below) - central has no equivalent
 row of its own for this since its layer canvas is fully occupied by "Base" or the
 non-base layer names (Num/Nav/etc).
+
+**Func is 7, Admin is 8 - Admin must be the higher index.** `zmk_keymap_highest_layer_active()`
+(used by both `layer_event_cb` here and `send_mod_state()` in `modifier_sync_central.c`)
+returns whichever active layer has the highest numeric index, not the most-recently-
+activated one. Admin is a conditional layer (`blecorne.keymap`'s `conditional_layers`,
+`if-layers = <4 7>` NUM+FUNC or `<4 5>` NUM+NAV, `then-layer = <8>`) that stacks on top
+of whatever momentary layers triggered it - if Admin's index were *lower* than Func's
+(as it originally was: Admin=7, Func=8), holding NUM+FUNC would correctly activate
+Admin's keymap bindings but the display would still say "Func", since 8 > 7. Confirmed
+on real hardware before the swap. If a new conditional layer is ever added, give it the
+highest index of anything it can combine with, not just the next free number.
 
 Layers 1 and 3 trigger Mac modifier order (⇧⌘⌃⌥ / ⌥⌃⌘⇧). Layers 2 and 3 trigger
 `is_colemak` for the peripheral's layout row.
@@ -337,16 +350,12 @@ at `y=5`, not vertically centered in the full 68px canvas.
 
 ### Status strip (`canvas_bot`, both halves)
 
-Two rows, not one: **row 1 (y=0)** is icons only - BT/wifi icon left-aligned (field
-width 24, `x=0`), battery/bolt icon right-aligned (field width 24, `x=44`, ending flush
-with the canvas's right edge at 68) - `draw_status_icon(..., LV_TEXT_ALIGN_LEFT/RIGHT)`.
-Wifi gets the same 24px field as the others even though it's the widest glyph
-(`box_w=21`) since 24 still clears it with room to spare. **Row 2 (y=20)** is text,
-`pixel_operator_mono_large` (same size as the layer name - bumped up from
-`pixel_operator_mono` this round), directly under its own icon - BT profile
-left-aligned (field width 22, `x=0`), battery `%` right-aligned (field width 40, `x=28`,
-ending flush at 68). Peripheral's row 2 has no left-side text (no BT-profile
-equivalent), just the right-aligned `%`.
+Two rows, not one: **row 1 (y=0)** is icons only - BT/wifi icon left-aligned, battery/
+bolt icon right-aligned - `draw_status_icon(..., LV_TEXT_ALIGN_LEFT/RIGHT)`. **Row 2
+(y=20)** is text, `pixel_operator_mono_large` (same size as the layer name), directly
+under its own icon - BT profile left-aligned (field width 22, `x=0`), battery `%`
+right-aligned (field width 40). Peripheral's row 2 has no left-side text (no
+BT-profile equivalent), just the right-aligned `%`.
 
 - **Field widths are sized off exact character counts, not guessed.**
   `pixel_operator_mono_large` is a fixed 10px/char, so `"100%"` (4 chars) is always
@@ -357,15 +366,42 @@ equivalent), just the right-aligned `%`.
   vs. keep the smaller font, vs. accept a near-zero gap. Abbreviating won. Don't
   "restore" `"BT %d"` without redoing this width math first - it will silently
   overflow/clip against the battery field again.
-- Central only: while searching for a BLE connection, the BT glyph flashes on/off
-  every 500ms (`flash_on`) instead of showing "Connecting..." text — no text is
-  drawn on row 2 until actually connected (`bt_connected`).
+- **Icon x/y offsets are real-hardware-calibrated, not derived from the field-width
+  math above - don't "clean them up" back to round numbers.** First-flash testing on
+  actual nice!view modules found: central's battery/bolt icon sitting slightly past
+  the true right edge (nudged from `x=44` to `x=40`, battery/bolt icon only - the row 2
+  `%` text position was already fine, left as-is); peripheral's battery icon
+  (`x=44`→`x=36`) and its `%` text (`x=28`→`x=20`) moved together by the same 8px,
+  worse than central's needed since that's the half with a real battery installed and
+  it was genuinely clipping off the display edge; peripheral's wifi icon (`x=0,y=0` →
+  `x=3,y=3`) was touching the physical top-left corner. None of this shows up in the
+  mockup's own from-scratch ink-measurement math (browser font metrics don't have the
+  same offset LVGL's do) - the mockup's `drawIcon()` takes explicit `edgeInset`/`topPad`
+  params specifically to carry these hardware-only corrections without disturbing its
+  own otherwise-correct centering.
+- Central only: while searching for a BLE connection, the BT glyph blinks dim/bright
+  every 500ms (`flash_on`) instead of showing "Connecting..." text — no text is drawn
+  on row 2 until actually connected (`bt_connected`). It's never fully absent, even
+  when disconnected - dim (`LV_OPA_40`) rather than not drawn at all, matching the
+  peripheral's wifi icon (dim when disconnected, full white when connected - see
+  `draw_wifi_icon`).
 - See Fonts above for the battery icon (`status_icon_font`, discrete levels + blink,
   now size 18) and the two section-separator rules drawn from `canvas_mid`.
 
 ### Homerow mods
 
-`hml` (left) / `hmr` (right): balanced flavor, 280 ms tapping-term, 175 ms quick-tap, 150 ms require-prior-idle, hold-trigger-on-release.
+`hml` (left) / `hmr` (right): balanced flavor, 280 ms tapping-term, 175 ms quick-tap, 150 ms require-prior-idle.
+
+**No `hold-trigger-on-release`.** It used to be set on both, but that flag defers the
+tap/hold decision until the hold-tap key itself is released instead of resolving via
+the tapping-term timeout or an opposite-hand `hold-trigger-key-positions` press -
+confirmed on real hardware this made the display only light up a held modifier *after*
+releasing it, and made holding multiple homerow mods at once resolve one at a time
+instead of simultaneously (each one only "landing" on its own release). Removed so
+mods resolve and report to HID (and the display) the instant they're held, and so
+multiple can be held together for chorded shortcuts. `hold-trigger-key-positions`
+(opposite-hand + thumbs) is unrelated and stays - that's what lets a same-hand key
+resolve a hold early without waiting for the full tapping term.
 
 `thm` (thumb shift/key, tap = key, hold = modifier): balanced flavor, 225 ms tapping-term, 175 ms quick-tap.
 

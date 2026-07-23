@@ -24,7 +24,6 @@
             tapping-term-ms = <280>;
             quick-tap-ms = <175>;
             require-prior-idle-ms = <150>;
-            hold-trigger-on-release;
             hold-trigger-key-positions = <KEYS_R THUMBS>;
             bindings = <&kp>, <&kp>;
         };
@@ -36,7 +35,6 @@
             tapping-term-ms = <280>;
             quick-tap-ms = <175>;
             require-prior-idle-ms = <150>;
-            hold-trigger-on-release;
             hold-trigger-key-positions = <KEYS_L THUMBS>;
             bindings = <&kp>, <&kp>;
         };
@@ -55,18 +53,25 @@
     conditional_layers {
         compatible = "zmk,conditional-layers";
 
-        /* Holding NUM (mo 4) + FUNC (mo 8) simultaneously activates ADMIN.
+        /* Holding NUM (mo 4) + FUNC (mo 7) simultaneously activates ADMIN.
          * Costs no dedicated thumb. Mac toggle in ADMIN resets on power cycle —
-         * keyboard always boots in Windows mode, which is intended. */
+         * keyboard always boots in Windows mode, which is intended.
+         *
+         * ADMIN must be the highest-numbered layer (8) here, above FUNC (7) -
+         * the display picks whichever active layer has the highest index
+         * (zmk_keymap_highest_layer_active()), so if ADMIN's index were lower
+         * than FUNC's, holding NUM+FUNC would activate ADMIN's bindings but
+         * the display would still show "Func" (the numerically-higher of the
+         * two simultaneously-active layers) instead of "Admin". */
 
         admin {
-            if-layers = <4 8>;
-            then-layer = <7>;
+            if-layers = <4 7>;
+            then-layer = <8>;
         };
 
         admin_leftonly {
             if-layers = <4 5>;
-            then-layer = <7>;
+            then-layer = <8>;
         };
     };
 
@@ -149,7 +154,7 @@
 &none          &kp Q         &kp W        &kp E        &kp R  &kp T            &kp Y           &kp U  &kp I        &kp O        &kp P            &none
 &none          &hml LCTRL A  &hml LGUI S  &hml LALT D  &kp F  &kp G            &kp H           &kp J  &hmr RALT K  &hmr RGUI L  &hmr RCTRL SEMI  &none
 &none          &lt 5 Z       &kp X        &kp C        &kp V  &kp B            &kp N           &kp M  &kp COMMA    &kp DOT      &lt 6 FSLH       &none
-                                &kp BACKSPACE  &mo 4  &thm LSHFT SPACE  &thm RSHFT BSPC  &mo 8  &kp ENTER
+                                &kp BACKSPACE  &mo 4  &thm LSHFT SPACE  &thm RSHFT BSPC  &mo 7  &kp ENTER
             >;
         };
 
@@ -180,7 +185,7 @@
 &none          &kp Q         &kp W        &kp F        &kp P  &kp B            &kp J           &kp L  &kp U        &kp Y        &kp SEMI         &none
 &none          &hml LCTRL A  &hml LGUI R  &hml LALT S  &kp T  &kp G            &kp M           &kp N  &hmr RALT E  &hmr RGUI I  &hmr RCTRL O     &none
 &none          &lt 5 Z       &kp X        &kp C        &kp D  &kp V            &kp K           &kp H  &kp COMMA    &kp DOT      &lt 6 FSLH       &none
-                                &kp BACKSPACE  &mo 4  &thm LSHFT SPACE  &thm RSHFT BSPC  &mo 8  &kp ENTER
+                                &kp BACKSPACE  &mo 4  &thm LSHFT SPACE  &thm RSHFT BSPC  &mo 7  &kp ENTER
             >;
         };
 
@@ -193,7 +198,7 @@
 &none          &kp Q        &kp W         &kp F        &kp P  &kp B            &kp J           &kp L  &kp U        &kp Y         &kp SEMI         &none
 &none          &hml LGUI A  &hml LCTRL R  &hml LALT S  &kp T  &kp G            &kp M           &kp N  &hmr RALT E  &hmr RCTRL I  &hmr RGUI O      &none
 &none          &lt 5 Z      &kp X         &kp C        &kp D  &kp V            &kp K           &kp H  &kp COMMA    &kp DOT       &lt 6 FSLH       &none
-                                &kp BACKSPACE  &mo 4  &thm LSHFT SPACE  &thm RSHFT BSPC  &mo 8  &kp ENTER
+                                &kp BACKSPACE  &mo 4  &thm LSHFT SPACE  &thm RSHFT BSPC  &mo 7  &kp ENTER
             >;
         };
 
@@ -232,7 +237,21 @@
             >;
         };
 
-        /* ADMIN — conditional: NUM(4) + FUNC(8) held simultaneously.
+        /* FUNC — must stay numerically lower than ADMIN (see conditional_layers
+         * above for why layer index order matters here, not just which
+         * physical key activates which layer). */
+
+        func_layer {
+            display-name = "Function Keys";
+            bindings = <
+&trans  &kp F1   &kp F2   &kp F3  &kp F4  &kp F5   &trans  &trans  &trans  &trans  &trans  &trans
+&trans  &kp F6   &kp F7   &kp F8  &kp F9  &kp F10  &trans  &trans  &trans  &trans  &trans  &trans
+&trans  &kp F11  &kp F12  &trans  &trans  &trans   &trans  &trans  &trans  &trans  &trans  &trans
+                          &trans  &trans  &trans   &trans  &trans  &trans
+            >;
+        };
+
+        /* ADMIN — conditional: NUM(4) + FUNC(7) held simultaneously.
          * Top row left: BT device select 0-3, BT clear.
          * Top row right: sys_reset, bootloader.
          * Homerow left: tog 1 = Qwerty Mac, tog 2 = Colemak Win, tog 3 = Colemak Mac.
@@ -246,16 +265,6 @@
 &trans  &tog 1        &tog 2        &tog 3        &trans        &trans      &studio_unlock  &trans       &trans  &trans  &trans  &trans
 &trans  &trans        &trans        &trans        &trans        &trans      &trans          &trans       &trans  &trans  &trans  &trans
                                     &trans        &trans        &trans      &trans          &trans       &trans
-            >;
-        };
-
-        func_layer {
-            display-name = "Function Keys";
-            bindings = <
-&trans  &kp F1   &kp F2   &kp F3  &kp F4  &kp F5   &trans  &trans  &trans  &trans  &trans  &trans
-&trans  &kp F6   &kp F7   &kp F8  &kp F9  &kp F10  &trans  &trans  &trans  &trans  &trans  &trans
-&trans  &kp F11  &kp F12  &trans  &trans  &trans   &trans  &trans  &trans  &trans  &trans  &trans
-                          &trans  &trans  &trans   &trans  &trans  &trans
             >;
         };
     };

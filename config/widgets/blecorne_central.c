@@ -57,7 +57,10 @@ static uint8_t cbuf_bot[CANVAS_BUF_SIZE];
 static const char *layer_names[] = {
     "Base", "Base",
     "Base", "Base",
-    "Num", "Nav", "Sym", "Admin", "Func",
+    /* Func(7)/Admin(8) order matches blecorne.keymap - ADMIN must be the
+     * higher index there so zmk_keymap_highest_layer_active() resolves to
+     * it (not Func) when both are simultaneously active. */
+    "Num", "Nav", "Sym", "Func", "Admin",
 };
 
 #define LAYER_NAME_COUNT ARRAY_SIZE(layer_names)
@@ -199,14 +202,16 @@ static void render_status_canvas(struct central_state *state) {
      * that blink alone signals "still pairing", no separate text needed. */
     draw_status_icon(canvas_bot, 0, 0, 24, ICON_BT, bt_connected || flash_on, LV_TEXT_ALIGN_LEFT);
 
+    /* x=40 (was 44) - nudged slightly left of the canvas edge per real-
+     * hardware feedback; the top edge (y=0) was already fine. */
     if (state->charging) {
-        draw_status_icon(canvas_bot, 44, 0, 24, ICON_BOLT, true, LV_TEXT_ALIGN_RIGHT);
+        draw_status_icon(canvas_bot, 40, 0, 24, ICON_BOLT, true, LV_TEXT_ALIGN_RIGHT);
     } else if (state->battery_level <= 5) {
         if (flash_on) {
-            draw_status_icon(canvas_bot, 44, 0, 24, ICON_BATTERY_EMPTY, true, LV_TEXT_ALIGN_RIGHT);
+            draw_status_icon(canvas_bot, 40, 0, 24, ICON_BATTERY_EMPTY, true, LV_TEXT_ALIGN_RIGHT);
         }
     } else {
-        draw_status_icon(canvas_bot, 44, 0, 24, battery_icon(state->battery_level), true, LV_TEXT_ALIGN_RIGHT);
+        draw_status_icon(canvas_bot, 40, 0, 24, battery_icon(state->battery_level), true, LV_TEXT_ALIGN_RIGHT);
     }
 
     /* Row 2 (y=20): BT profile left (under the BT icon) once connected,
@@ -240,10 +245,11 @@ static void render_status_canvas(struct central_state *state) {
  *
  * Mac: all four cells are icon_font glyphs (real Material Design "Apple
  * keyboard" + Font Awesome artwork via Nerd Fonts) - Shift, Ctrl, Cmd, Opt.
- * Windows: only Shift stays an icon. Ctrl/GUI/Alt become plain text ("Ctrl"/
+ * Windows: only Shift stays an icon. Ctrl/GUI/Alt become plain text ("Ctl"/
  * "Win"/"Alt") instead, because real Windows keyboards print those as text
  * on the keycap, not a symbol - unlike Mac, which does print ⌘/⌥/⌃ symbols.
- */
+ * "Ctrl" (4 chars) wrapped onto a second line at this font/box size - "Ctl"
+ * (3 chars, matching "Win"/"Alt") fits on one line like the other two. */
 static void render_mod_canvas(struct central_state *state) {
     clear_canvas(canvas_mid);
 
@@ -272,7 +278,7 @@ static void render_mod_canvas(struct central_state *state) {
         draw_mod_icon(canvas_mid, x0, y1, ICON_CMD,  ICON_CMD_W,  gui_active);
         draw_mod_icon(canvas_mid, x1, y1, ICON_OPT,  ICON_OPT_W,  alt_active);
     } else {
-        draw_mod_text(canvas_mid, x1, y0, "Ctrl", ctrl_active);
+        draw_mod_text(canvas_mid, x1, y0, "Ctl", ctrl_active);
         draw_mod_text(canvas_mid, x0, y1, "Win",  gui_active);
         draw_mod_text(canvas_mid, x1, y1, "Alt",  alt_active);
     }

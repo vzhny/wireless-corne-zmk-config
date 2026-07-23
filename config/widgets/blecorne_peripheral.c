@@ -152,20 +152,27 @@ static void render_status_canvas(struct peripheral_state *state) {
 
     /* Battery icon is one of five discrete Font Awesome levels (see
      * battery_icon()); at <=5% it blinks (ICON_BATTERY_EMPTY, flash_on
-     * only) instead of showing solid - same flash_timer as central. */
-    draw_wifi_icon(canvas_bot, 0, 0, 24, state->connected, LV_TEXT_ALIGN_LEFT);
+     * only) instead of showing solid - same flash_timer as central.
+     *
+     * x=3,y=3 (was 0,0) - real hardware showed the wifi icon touching the
+     * physical top-left corner; nudged down and right off the edge.
+     * Battery icon/text moved left 8px (was x=44/x=28) - real hardware
+     * (this half has an actual battery installed) showed it clipping off
+     * the right edge of the display, worse than central's charging icon
+     * (see its comment) needed. */
+    draw_wifi_icon(canvas_bot, 3, 3, 24, state->connected, LV_TEXT_ALIGN_LEFT);
 
     if (state->battery_level <= 5) {
         if (flash_on) {
-            draw_status_icon(canvas_bot, 44, 0, 24, ICON_BATTERY_EMPTY, true, LV_TEXT_ALIGN_RIGHT);
+            draw_status_icon(canvas_bot, 36, 0, 24, ICON_BATTERY_EMPTY, true, LV_TEXT_ALIGN_RIGHT);
         }
     } else {
-        draw_status_icon(canvas_bot, 44, 0, 24, battery_icon(state->battery_level), true, LV_TEXT_ALIGN_RIGHT);
+        draw_status_icon(canvas_bot, 36, 0, 24, battery_icon(state->battery_level), true, LV_TEXT_ALIGN_RIGHT);
     }
 
     char batt_buf[6];
     snprintf(batt_buf, sizeof(batt_buf), "%d%%", state->battery_level);
-    canvas_draw_text(canvas_bot, 28, 20, 40, &lbl, batt_buf);
+    canvas_draw_text(canvas_bot, 20, 20, 40, &lbl, batt_buf);
 
     rotate_canvas(canvas_bot);
 }
@@ -202,7 +209,7 @@ static void render_mod_canvas(struct peripheral_state *state) {
         draw_mod_icon(canvas_mid, x0, y1, ICON_CMD,  ICON_CMD_W,  gui_active);
         draw_mod_icon(canvas_mid, x1, y1, ICON_OPT,  ICON_OPT_W,  alt_active);
     } else {
-        draw_mod_text(canvas_mid, x1, y0, "Ctrl", ctrl_active);
+        draw_mod_text(canvas_mid, x1, y0, "Ctl", ctrl_active);
         draw_mod_text(canvas_mid, x0, y1, "Win",  gui_active);
         draw_mod_text(canvas_mid, x1, y1, "Alt",  alt_active);
     }

@@ -1,5 +1,4 @@
 build:
   cmake: config
-  kconfig: config/Kconfig
   settings:
     board_root: .

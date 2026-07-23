@@ -181,8 +181,8 @@ canvas.actual-canvas {
         <option value="4">4 - Num</option>
         <option value="5">5 - Nav</option>
         <option value="6">6 - Sym</option>
-        <option value="7">7 - Admin</option>
-        <option value="8">8 - Func</option>
+        <option value="7">7 - Func</option>
+        <option value="8">8 - Admin</option>
       </select>
     </div>
     <div class="group">
@@ -299,11 +299,16 @@ const CANVAS_SIZE = 68;
 const PHYS_W = 68, PHYS_H = 160;
 const BASE_TOP = 0, BASE_MID = 68, BASE_BOT = 136;
 
-const LAYER_NAMES = ["Base","Base","Base","Base","Num","Nav","Sym","Admin","Func"];
+// Func(7)/Admin(8) order matches blecorne.keymap - ADMIN must be the higher
+// index there so zmk_keymap_highest_layer_active() resolves to it (not
+// Func) when both are simultaneously active - see conditional_layers.
+const LAYER_NAMES = ["Base","Base","Base","Base","Num","Nav","Sym","Func","Admin"];
 
-// LVGL_BACKGROUND/FOREGROUND per config/widgets/util.h with CONFIG_NICE_VIEW_WIDGET_INVERTED=y
-const FG = 255; // white ink
-const BG = 0;   // black background
+// LVGL_BACKGROUND/FOREGROUND per config/widgets/util.h - plain black ink on
+// white background (there used to be a color-inversion Kconfig toggle here;
+// removed, it never did anything visible on real hardware).
+const FG = 0;   // black ink
+const BG = 255; // white background
 
 function makeCanvasBuf() {
   return new Uint8ClampedArray(CANVAS_SIZE * CANVAS_SIZE).fill(BG);
@@ -436,16 +441,22 @@ function rasterizeIconInk(icon, sizePx, boxW, boxH, align, edgeX, topPad) {
   return textCtx.getImageData(0, 0, boxW, boxH);
 }
 
-// Status row: icon's ink edge lands exactly at the canvas edge (x=0 for
-// BT/wifi, x=CANVAS_SIZE for battery/bolt) - the same edge the text field
-// below it is anchored to (see renderCentral/renderPeripheral), so icon and
-// text line up. Raster spans the full CANVAS_SIZE width (not just a narrow
-// per-icon field) so wide glyphs (wifi, box_w=21) can never clip against
-// the raster's own canvas boundary - that was the real cause of the wifi
-// icon clipping, not the buffer/composite step.
-function drawIcon(buf, icon, active, align, size) {
-  const edgeX = align === 'right' ? CANVAS_SIZE : 0;
-  const img = rasterizeIconInk(icon, size || ICON_SIZE_STATUS, CANVAS_SIZE, 22, align, edgeX, 2);
+// Status row: icon's ink edge lands at the canvas edge (x=0 for BT/wifi,
+// x=CANVAS_SIZE for battery/bolt), inset by `edgeInset` px - the same edge
+// the text field below it is anchored to (see renderCentral/
+// renderPeripheral), so icon and text line up. `edgeInset`/`topPad` default
+// to 0/2; both are real-hardware-calibrated nudges for specific icons (see
+// call sites) - the exact-ink-measured position this function computes is
+// otherwise correct, but doesn't account for a small hardware-specific
+// offset real testing found on the actual nice!view module. Raster spans
+// the full CANVAS_SIZE width (not just a narrow per-icon field) so wide
+// glyphs (wifi, box_w=21) can never clip against the raster's own canvas
+// boundary - that was the real cause of the wifi icon clipping in the
+// mockup, not the buffer/composite step.
+function drawIcon(buf, icon, active, align, size, edgeInset, topPad) {
+  edgeInset = edgeInset || 0;
+  const edgeX = align === 'right' ? CANVAS_SIZE - edgeInset : edgeInset;
+  const img = rasterizeIconInk(icon, size || ICON_SIZE_STATUS, CANVAS_SIZE, 22, align, edgeX, topPad ?? 2);
   blendGlyph(buf, 0, 0, img, active ? 1.0 : (0x40 / 0xFF));
 }
 
@@ -507,13 +518,15 @@ function renderCentral(state) {
     // Battery: one of five discrete Font Awesome levels (batteryIcon()), not
     // a continuous fill. <=5% shows battEmpty (blinks on real hardware via
     // flash_on - this static preview just always shows it). Charging
-    // replaces the battery icon entirely with the bolt glyph.
+    // replaces the battery icon entirely with the bolt glyph. edgeInset=4:
+    // real hardware showed this icon sitting slightly past the true right
+    // edge - nudged in to match blecorne_central.c's x=40 (was 44).
     if (state.charging) {
-      drawIcon(buf, ICONS.bolt, true, 'right');
+      drawIcon(buf, ICONS.bolt, true, 'right', undefined, 4);
     } else if (state.battery <= 5) {
-      drawIcon(buf, ICONS.battEmpty, true, 'right');
+      drawIcon(buf, ICONS.battEmpty, true, 'right', undefined, 4);
     } else {
-      drawIcon(buf, batteryIcon(state.battery), true, 'right');
+      drawIcon(buf, batteryIcon(state.battery), true, 'right', undefined, 4);
     }
     drawText(buf, 28, 20, 40, `${state.battery}%`, 16, 'right');
     // Blank while searching - the flashing BT glyph above is the only "still
@@ -527,8 +540,9 @@ function renderCentral(state) {
   // canvas_mid: modifiers - two rows of bordered cells (MOD_BOX_W x
   // MOD_BOX_H, see drawModBox), Shift+Ctrl on row 1, GUI+Alt on row 2.
   // Mac: all four are icon_font glyphs. Windows: only Shift stays an icon -
-  // Ctrl/GUI/Alt become plain text ("Ctrl"/"Win"/"Alt") since real Windows
-  // keyboards print those as text, not a symbol (unlike Mac's ⌘/⌥/⌃).
+  // Ctrl/GUI/Alt become plain text ("Ctl"/"Win"/"Alt" - "Ctrl" wrapped onto
+  // a second line at this box/font size) since real Windows keyboards print
+  // those as text, not a symbol (unlike Mac's ⌘/⌥/⌃).
   // "Active"/pressed inverts the cell (filled box, inverted content color)
   // instead of the old opacity fade - see drawModIcon/drawModText.
   // Section-boundary rules at y=0/y=67: this canvas uses its full 68px
@@ -547,7 +561,7 @@ function renderCentral(state) {
       drawModIcon(buf, x0, y1, ICONS.cmd, state.mods.gui);
       drawModIcon(buf, x1, y1, ICONS.opt, state.mods.alt);
     } else {
-      drawModText(buf, x1, y0, 'Ctrl', state.mods.ctrl);
+      drawModText(buf, x1, y0, 'Ctl', state.mods.ctrl);
       drawModText(buf, x0, y1, 'Win', state.mods.gui);
       drawModText(buf, x1, y1, 'Alt', state.mods.alt);
     }
@@ -583,13 +597,20 @@ function renderPeripheral(state) {
   {
     const buf = makeCanvasBuf();
     clearCanvas(buf);
-    drawIcon(buf, ICONS.wifi, state.connected, 'left', ICON_SIZE_WIFI);
+    // edgeInset=3/topPad=5 (was 0/2): real hardware showed this icon
+    // touching the physical top-left corner - nudged down and right to
+    // match blecorne_peripheral.c's x=3,y=3 (was 0,0).
+    drawIcon(buf, ICONS.wifi, state.connected, 'left', ICON_SIZE_WIFI, 3, 5);
+    // edgeInset=8 (was 0): real hardware (this half has an actual battery)
+    // showed this icon clipping off the right edge - matches
+    // blecorne_peripheral.c's x=36 (was 44), a bigger correction than
+    // central's charging icon needed (see its comment).
     if (state.battery <= 5) {
-      drawIcon(buf, ICONS.battEmpty, true, 'right');
+      drawIcon(buf, ICONS.battEmpty, true, 'right', undefined, 8);
     } else {
-      drawIcon(buf, batteryIcon(state.battery), true, 'right');
+      drawIcon(buf, batteryIcon(state.battery), true, 'right', undefined, 8);
     }
-    drawText(buf, 28, 20, 40, `${state.battery}%`, 16, 'right');
+    drawText(buf, 20, 20, 40, `${state.battery}%`, 16, 'right');
     compositeCanvas(physBuf, buf, BASE_TOP);
   }
 
@@ -607,7 +628,7 @@ function renderPeripheral(state) {
       drawModIcon(buf, x0, y1, ICONS.cmd, state.mods.gui);
       drawModIcon(buf, x1, y1, ICONS.opt, state.mods.alt);
     } else {
-      drawModText(buf, x1, y0, 'Ctrl', state.mods.ctrl);
+      drawModText(buf, x1, y0, 'Ctl', state.mods.ctrl);
       drawModText(buf, x0, y1, 'Win', state.mods.gui);
       drawModText(buf, x1, y1, 'Alt', state.mods.alt);
     }

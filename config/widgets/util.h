@@ -10,10 +10,8 @@
                        LV_COLOR_FORMAT_GET_BPP(CANVAS_COLOR_FORMAT), \
                        LV_DRAW_BUF_STRIDE_ALIGN)
 
-#define LVGL_BACKGROUND \
-    (IS_ENABLED(CONFIG_NICE_VIEW_WIDGET_INVERTED) ? lv_color_black() : lv_color_white())
-#define LVGL_FOREGROUND \
-    (IS_ENABLED(CONFIG_NICE_VIEW_WIDGET_INVERTED) ? lv_color_white() : lv_color_black())
+#define LVGL_BACKGROUND lv_color_white()
+#define LVGL_FOREGROUND lv_color_black()
 
 void rotate_canvas(lv_obj_t *canvas);
 
