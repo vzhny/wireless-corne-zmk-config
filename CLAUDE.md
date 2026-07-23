@@ -175,25 +175,42 @@ Unicode Miscellaneous Technical symbols anyway.
 
 | Symbol | Macro | Codepoint | Source glyph | ink width (`ICON_*_W`) |
 |--------|-------|-----------|--------------|------------------------|
-| ⇧ Shift | `ICON_SHIFT` | U+F0636 | `md-apple_keyboard_shift` | 20 |
+| ⇧⇧ Shift | `ICON_SHIFT` | U+F102 | `fa-angles_up` | 17 |
 | ⌃ Ctrl | `ICON_CTRL` | U+F0634 | `md-apple_keyboard_control` (shared Win+Mac) | 16 |
 | ⌘ Cmd | `ICON_CMD` | U+F0633 | `md-apple_keyboard_command` | 20 |
 | ⌥ Opt | `ICON_OPT` | U+F0635 | `md-apple_keyboard_option` | 18 |
+
+`ICON_SHIFT` isn't `md-apple_keyboard_shift` (U+F0636) anymore - that glyph is a
+solid/filled arrow-with-roof shape, visibly heavier-stroked than the "Ctl"/"Win"/"Alt"
+text and the other 3 (thin-lined) icons, confirmed on real hardware. This font has no
+outlined/thin variant of that specific shape. `md-chevron_up` (U+F0143) fixed the
+stroke weight but then looked nearly identical to `ICON_CTRL` (also a plain "^") at
+this size - hard to tell the two cells apart at a glance. `fa-angles_up` (a double
+chevron, "^^") is the fix: thin-stroked like the rest, but still visually distinct
+from Ctrl's single caret. If a source glyph is ever swapped again, actually render and
+compare it (`fillText` on a `@font-face`'d span, not just the Nerd Fonts name) rather
+than assuming - "looks about right" from the name alone is exactly how the original
+`md-bolt` mixup (see Fonts below, status row) and this one both happened.
 
 `fa-windows` (U+F17A, formerly `ICON_WIN`) was dropped from the conversion entirely -
 nothing ever referenced it, since Windows shows "Win" as text (see below), never an icon.
 
 Each icon's `ICON_*_W` macro is its real ink width (`box_w` in the generated
-`icon_font.c`, all with `ofs_x=0`) - needed because `LV_TEXT_ALIGN_CENTER` centers by
+`icon_font.c`); `ICON_*_OFS_X` is its left bearing (`ofs_x`, currently 0 for all 4,
+kept as named constants rather than assumed so a future glyph swap with nonzero
+bearing doesn't silently mis-center). Needed because `LV_TEXT_ALIGN_CENTER` centers by
 the font's shared `adv_w` (~14px, the same for every glyph in this font), not each
 glyph's actual `box_w` (16-20px, wider than `adv_w`), so centering-by-advance-width
 visibly shifts these icons off-center. `draw_mod_icon()` in both widget `.c` files
-centers manually instead: `LV_TEXT_ALIGN_LEFT` at `x + (MOD_BOX_W - icon_w) / 2`
-horizontally, and vertically via the known `box_h`/`ofs_y` per glyph (worked out by
-hand against LVGL's glyph-placement formula - see the git history for the derivation -
-rather than a second guessed constant). The pixel mockup solves the equivalent problem
-more directly, since it has no such font-metrics table to hand-derive from: `rasterizeIconInk()`
-uses the *measured* ink bounds from canvas `TextMetrics.actualBoundingBox{Left,Right,
+centers manually instead: `LV_TEXT_ALIGN_LEFT` at `x + (MOD_BOX_W - icon_w) / 2 -
+icon_ofs_x` horizontally. Vertically it's just a flat `y + 3` for all four glyphs, not
+a per-glyph adjustment - working through LVGL's glyph-placement formula by hand
+(`baseline_y = y + line_height - base_line`, `glyph_top = baseline_y - ofs_y - box_h`)
+shows this already centers all four within about half a pixel of the box center,
+despite their differing `box_h`/`ofs_y`, so no per-icon vertical constant was needed.
+The pixel mockup solves the equivalent centering problem more directly, since it has
+no such font-metrics table to hand-derive from: `rasterizeIconInk()` uses the
+*measured* ink bounds from canvas `TextMetrics.actualBoundingBox{Left,Right,
 Ascent,Descent}` to center both axes exactly, rather than reproducing LVGL's box math in
 JS. Prefer that measured-ink approach for any *new* mockup icon-drawing code - it's more
 robust than a hand-maintained constants table and was what actually fixed a previous

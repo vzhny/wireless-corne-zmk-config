@@ -103,15 +103,15 @@ static void draw_mod_box(lv_obj_t *canvas, int x, int y, bool active) {
     canvas_draw_rect(canvas, x, y, MOD_BOX_W, MOD_BOX_H, &dsc);
 }
 
-/* icon_w = glyph's real ink width (ICON_*_W) - see blecorne_central.c's
- * draw_mod_icon() comment for why LV_TEXT_ALIGN_CENTER alone mis-centers
- * these (it centers by the font's shared adv_w, not each glyph's box_w). */
-static void draw_mod_icon(lv_obj_t *canvas, int x, int y, const char *icon, int icon_w, bool active) {
+/* icon_w = glyph's real ink width (ICON_*_W), icon_ofs_x = left bearing
+ * (ICON_*_OFS_X) - see blecorne_central.c's draw_mod_icon() comment. */
+static void draw_mod_icon(lv_obj_t *canvas, int x, int y, const char *icon, int icon_w,
+                          int icon_ofs_x, bool active) {
     draw_mod_box(canvas, x, y, active);
     lv_draw_label_dsc_t dsc;
     init_label_dsc(&dsc, active ? LVGL_BACKGROUND : LVGL_FOREGROUND, &icon_font);
     dsc.align = LV_TEXT_ALIGN_LEFT;
-    int content_x = x + (MOD_BOX_W - icon_w) / 2;
+    int content_x = x + (MOD_BOX_W - icon_w) / 2 - icon_ofs_x;
     canvas_draw_text(canvas, content_x, y + 3, MOD_BOX_W, &dsc, icon);
 }
 
@@ -203,11 +203,11 @@ static void render_mod_canvas(struct peripheral_state *state) {
 
     int x0 = 4, x1 = 36, y0 = 6, y1 = 38;
 
-    draw_mod_icon(canvas_mid, x0, y0, ICON_SHIFT, ICON_SHIFT_W, shift_active);
+    draw_mod_icon(canvas_mid, x0, y0, ICON_SHIFT, ICON_SHIFT_W, ICON_SHIFT_OFS_X, shift_active);
     if (is_mac) {
-        draw_mod_icon(canvas_mid, x1, y0, ICON_CTRL, ICON_CTRL_W, ctrl_active);
-        draw_mod_icon(canvas_mid, x0, y1, ICON_CMD,  ICON_CMD_W,  gui_active);
-        draw_mod_icon(canvas_mid, x1, y1, ICON_OPT,  ICON_OPT_W,  alt_active);
+        draw_mod_icon(canvas_mid, x1, y0, ICON_CTRL, ICON_CTRL_W, ICON_CTRL_OFS_X, ctrl_active);
+        draw_mod_icon(canvas_mid, x0, y1, ICON_CMD,  ICON_CMD_W,  ICON_CMD_OFS_X,  gui_active);
+        draw_mod_icon(canvas_mid, x1, y1, ICON_OPT,  ICON_OPT_W,  ICON_OPT_OFS_X,  alt_active);
     } else {
         draw_mod_text(canvas_mid, x1, y0, "Ctl", ctrl_active);
         draw_mod_text(canvas_mid, x0, y1, "Win",  gui_active);

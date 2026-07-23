@@ -139,16 +139,20 @@ static void draw_mod_box(lv_obj_t *canvas, int x, int y, bool active) {
 /* `icon_w` is the glyph's real ink width (ICON_*_W in icon_font.h), NOT the
  * box width. LV_TEXT_ALIGN_CENTER alone under-centers these: lv_font_conv
  * gives every glyph in this font the same adv_w (a made-up "monospace"
- * advance, ~14px), but the actual icons are wider than that (16-20px) - so
+ * advance, ~14px), but the actual icons are wider than that (12-20px) - so
  * centering-by-advance-width places them noticeably off-center relative to
  * their true ink. Centering manually against the real box_w instead (LEFT
- * align at a computed x) fixes it. */
-static void draw_mod_icon(lv_obj_t *canvas, int x, int y, const char *icon, int icon_w, bool active) {
+ * align at a computed x) fixes it. `icon_ofs_x` is the glyph's left bearing
+ * (ICON_*_OFS_X) - LVGL adds this on top of wherever we tell it to draw, so
+ * it has to be subtracted back out of the centering math or the glyph
+ * drifts right by that amount (only nonzero for Shift, currently). */
+static void draw_mod_icon(lv_obj_t *canvas, int x, int y, const char *icon, int icon_w,
+                          int icon_ofs_x, bool active) {
     draw_mod_box(canvas, x, y, active);
     lv_draw_label_dsc_t dsc;
     init_label_dsc(&dsc, active ? LVGL_BACKGROUND : LVGL_FOREGROUND, &icon_font);
     dsc.align = LV_TEXT_ALIGN_LEFT;
-    int content_x = x + (MOD_BOX_W - icon_w) / 2;
+    int content_x = x + (MOD_BOX_W - icon_w) / 2 - icon_ofs_x;
     canvas_draw_text(canvas, content_x, y + 3, MOD_BOX_W, &dsc, icon);
 }
 
@@ -272,11 +276,11 @@ static void render_mod_canvas(struct central_state *state) {
 
     int x0 = 4, x1 = 36, y0 = 6, y1 = 38;
 
-    draw_mod_icon(canvas_mid, x0, y0, ICON_SHIFT, ICON_SHIFT_W, shift_active);
+    draw_mod_icon(canvas_mid, x0, y0, ICON_SHIFT, ICON_SHIFT_W, ICON_SHIFT_OFS_X, shift_active);
     if (is_mac) {
-        draw_mod_icon(canvas_mid, x1, y0, ICON_CTRL, ICON_CTRL_W, ctrl_active);
-        draw_mod_icon(canvas_mid, x0, y1, ICON_CMD,  ICON_CMD_W,  gui_active);
-        draw_mod_icon(canvas_mid, x1, y1, ICON_OPT,  ICON_OPT_W,  alt_active);
+        draw_mod_icon(canvas_mid, x1, y0, ICON_CTRL, ICON_CTRL_W, ICON_CTRL_OFS_X, ctrl_active);
+        draw_mod_icon(canvas_mid, x0, y1, ICON_CMD,  ICON_CMD_W,  ICON_CMD_OFS_X,  gui_active);
+        draw_mod_icon(canvas_mid, x1, y1, ICON_OPT,  ICON_OPT_W,  ICON_OPT_OFS_X,  alt_active);
     } else {
         draw_mod_text(canvas_mid, x1, y0, "Ctl", ctrl_active);
         draw_mod_text(canvas_mid, x0, y1, "Win",  gui_active);
