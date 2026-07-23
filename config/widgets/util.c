@@ -135,7 +135,12 @@ void draw_glyph(lv_obj_t *canvas, int x, int y,
                 const lv_image_dsc_t *glyph, bool active) {
     lv_draw_image_dsc_t img_dsc;
     lv_draw_image_dsc_init(&img_dsc);
+    /* LVGL's L8 recolor path (lv_draw_sw_img.c) ignores recolor_opa
+     * entirely and uses the bitmap's own byte value as an alpha mask for
+     * `recolor` instead - active/inactive fade has to go through the
+     * image's overall opa, not recolor_opa. */
     img_dsc.recolor     = LVGL_FOREGROUND;
-    img_dsc.recolor_opa = active ? LV_OPA_COVER : LV_OPA_40;
+    img_dsc.recolor_opa = LV_OPA_COVER;
+    img_dsc.opa         = active ? LV_OPA_COVER : LV_OPA_40;
     canvas_draw_img(canvas, x, y, glyph, &img_dsc);
 }

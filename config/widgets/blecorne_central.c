@@ -189,7 +189,7 @@ static void render_layer_canvas(struct central_state *state) {
         bool on = (active == i);
         draw_circle(canvas_top, cx, 50, 10, on);
         init_label_dsc(&num_lbl, on ? LVGL_BACKGROUND : LVGL_FOREGROUND,
-                       &lv_font_montserrat_8);
+                       &lv_font_montserrat_10);
         num_lbl.align = LV_TEXT_ALIGN_CENTER;
         snprintf(num_str, sizeof(num_str), "%d", i);
         canvas_draw_text(canvas_top, cx, 51, 10, &num_lbl, num_str);
@@ -201,7 +201,7 @@ static void render_layer_canvas(struct central_state *state) {
         bool on = (active == i);
         draw_circle(canvas_top, cx, 37, 10, on);
         init_label_dsc(&num_lbl, on ? LVGL_BACKGROUND : LVGL_FOREGROUND,
-                       &lv_font_montserrat_8);
+                       &lv_font_montserrat_10);
         num_lbl.align = LV_TEXT_ALIGN_CENTER;
         snprintf(num_str, sizeof(num_str), "%d", i);
         canvas_draw_text(canvas_top, cx, 38, 10, &num_lbl, num_str);
