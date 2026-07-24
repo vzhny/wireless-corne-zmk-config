@@ -442,11 +442,27 @@ goes down/up, before any hold-tap/combo logic resolves it) for the known modifie
 positions, and manually lights up that mod on the display after *that position's own*
 `tapping-term-ms`, entirely independent of whatever ZMK's real hold-tap decision
 eventually is. This is `shadow_mods` (a file-scope `uint8_t`, same 8-bit layout as a
-real HID mod byte) - OR'd with the real `state->mods` everywhere mods are read, both
-for this half's own display (`render_mod_canvas`) and for what gets forwarded to the
-peripheral (`blecorne_central_get_display_mods()`, used by
-`modifier_sync_central.c`'s `send_mod_state()` instead of reading
-`zmk_hid_get_explicit_mods()` directly).
+real HID mod byte) - and it is the **only** source `render_mod_canvas` and
+`blecorne_central_get_display_mods()` (used by `modifier_sync_central.c`'s
+`send_mod_state()`, forwarded to the peripheral) read for the mod cells. Every
+modifier in this keymap is bound through one of the 8 tracked positions, so this alone
+is a complete picture of what should be lit.
+
+This used to be OR'd with the real `zmk_hid_get_explicit_mods()` instead of replacing
+it, on the theory that shadow-tracking only needed to help the *lighting-up* side and
+the real HID state would always correctly clear itself. That was wrong: releasing a
+modifier held in isolation (no other key ever pressed) left the cell stuck lit,
+confirmed on hardware, on every mod on both halves - something about that snapshot
+doesn't reliably reflect the release in this exact scenario. Since shadow-tracking
+already has complete, direct, reliable coverage of every position that can light a mod
+cell, the fix was to stop reading the real HID snapshot for this at all rather than
+chase the exact cause of the stale read.
+
+Because `shadow_mods` changes are driven purely by position-event timers now - not by
+any `zmk_keycode_state_changed` central would otherwise see - `blecorne_central.c`
+calls `modifier_sync_notify_mods_changed()` (declared in `split/modifier_sync.h`,
+implemented in `modifier_sync_central.c`) directly whenever a shadow bit changes, so
+the peripheral's copy doesn't wait on some unrelated keystroke to resync.
 
 **This is a deliberate approximation, not real HID state, and can disagree with it:**
 - A quick type-through that resolves HOLD via `"balanced"`'s interrupt-release rule

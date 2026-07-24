@@ -6,13 +6,11 @@
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/battery_state_changed.h>
 #include <zmk/events/usb_conn_state_changed.h>
-#include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/events/ble_active_profile_changed.h>
 #include <zmk/keymap.h>
 #include <zmk/battery.h>
 #include <zmk/usb.h>
-#include <zmk/hid.h>
 #include <zmk/ble.h>
 
 #include "util.h"
@@ -21,6 +19,7 @@
 #include "fonts/icon_font.h"
 #include "fonts/status_icon_font.h"
 #include "blecorne_central.h"
+#include "split/modifier_sync.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -30,7 +29,6 @@ struct central_state {
     uint8_t  battery_level;
     bool     charging;
     uint8_t  active_layer;
-    uint32_t mods;
     bool     ble_connected;
     uint8_t  ble_profile;
 };
@@ -89,11 +87,14 @@ static const char *get_layer_name(uint8_t idx) {
 #define MOD_RALT   BIT(6)
 #define MOD_RGUI   BIT(7)
 
-/* Display-only approximation of "currently held" for the mod keys, since
- * the real HID mod state can lag well behind the physical press for any
- * hold-tap key - see the shadow-tracking section below for how this gets
- * set. Combined with the real mods (state->mods | shadow_mods) wherever
- * mods are shown or forwarded to the peripheral - never fed back into
+/* What the mod cells actually display - built entirely from watching raw
+ * key positions (see the shadow-tracking section below), not from real HID
+ * mod state. Every modifier in this keymap is bound through one of the
+ * tracked hold-tap positions (homerow or thumb), so this alone is a
+ * complete picture of what should be lit - and it sidesteps a real bug
+ * where relying on the real HID snapshot (zmk_hid_get_explicit_mods()) left
+ * a cell stuck lit after releasing a modifier held in isolation, with no
+ * other key pressed to force a resync. Display-only - never read back into
  * actual HID output. */
 static uint8_t shadow_mods = 0;
 
@@ -280,7 +281,7 @@ static void render_mod_canvas(struct central_state *state) {
     canvas_draw_rect(canvas_mid, 0, CANVAS_SIZE - 1, CANVAS_SIZE, 1, &rule_dsc);
 
     bool is_mac = (state->active_layer == 1 || state->active_layer == 3);
-    uint32_t mods = state->mods | shadow_mods;
+    uint32_t mods = shadow_mods;
 
     bool shift_active = !!(mods & MOD_LSHIFT);
     bool ctrl_active  = !!(mods & MOD_LCTRL);
@@ -413,6 +414,7 @@ static void shadow_slot_timeout(struct k_work *work) {
     slot->fired = true;
     shadow_mods |= slot->applied_bit;
     display_submit(&mod_render_work);
+    modifier_sync_notify_mods_changed();
 }
 
 static int position_event_cb(const zmk_event_t *eh) {
@@ -436,6 +438,7 @@ static int position_event_cb(const zmk_event_t *eh) {
                 slot->fired = false;
                 shadow_mods &= ~slot->applied_bit;
                 display_submit(&mod_render_work);
+                modifier_sync_notify_mods_changed();
             }
         }
         break;
@@ -446,12 +449,11 @@ static int position_event_cb(const zmk_event_t *eh) {
 ZMK_LISTENER(central_position, position_event_cb);
 ZMK_SUBSCRIPTION(central_position, zmk_position_state_changed);
 
-/* Combined real+shadow mods, 8-bit HID shape (bits 0-3 left, 4-7 right) -
- * used by modifier_sync_central.c to forward the right-hand nibble (with
- * its shadow bits) to the peripheral, the same way it already forwards
- * the real R-mod nibble. */
+/* Shadow-tracked mods, 8-bit HID shape (bits 0-3 left, 4-7 right) - used by
+ * modifier_sync_central.c to forward the right-hand nibble to the
+ * peripheral. */
 uint8_t blecorne_central_get_display_mods(void) {
-    return (uint8_t)((widget_state.mods | shadow_mods) & 0xFF);
+    return shadow_mods;
 }
 
 /* ── Event listeners ─────────────────────────────────────────────────── */
@@ -477,12 +479,6 @@ static int layer_event_cb(const zmk_event_t *eh) {
     return ZMK_EV_EVENT_BUBBLE;
 }
 
-static int keycode_event_cb(const zmk_event_t *eh) {
-    widget_state.mods = zmk_hid_get_explicit_mods();
-    display_submit(&mod_render_work);
-    return ZMK_EV_EVENT_BUBBLE;
-}
-
 static int ble_event_cb(const zmk_event_t *eh) {
     bt_connected               = zmk_ble_active_profile_is_connected();
     widget_state.ble_profile   = zmk_ble_active_profile_index();
@@ -496,9 +492,6 @@ ZMK_SUBSCRIPTION(central_battery, zmk_battery_state_changed);
 
 ZMK_LISTENER(central_layer, layer_event_cb);
 ZMK_SUBSCRIPTION(central_layer, zmk_layer_state_changed);
-
-ZMK_LISTENER(central_keycode, keycode_event_cb);
-ZMK_SUBSCRIPTION(central_keycode, zmk_keycode_state_changed);
 
 ZMK_LISTENER(central_ble, ble_event_cb);
 ZMK_SUBSCRIPTION(central_ble, zmk_ble_active_profile_changed);
@@ -533,7 +526,6 @@ int blecorne_central_widget_init(struct blecorne_central_widget *widget,
     widget_state.battery_level = zmk_battery_state_of_charge();
     widget_state.charging      = zmk_usb_is_powered();
     widget_state.active_layer  = zmk_keymap_highest_layer_active();
-    widget_state.mods          = zmk_hid_get_explicit_mods();
     widget_state.ble_connected = bt_connected;
     widget_state.ble_profile   = zmk_ble_active_profile_index();
 

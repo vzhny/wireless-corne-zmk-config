@@ -106,9 +106,9 @@ static void send_mod_state(void) {
     if (!periph_conn || !mod_char_handle) {
         return;
     }
-    /* Real mods OR'd with the central widget's display-only shadow-tracked
-     * mods (see blecorne_central.c) - so the peripheral's mod cells get the
-     * same real-time approximation the left half's own display does. */
+    /* The central widget's display-only shadow-tracked mods (see
+     * blecorne_central.c) - the peripheral's mod cells get the same
+     * real-time approximation the left half's own display does. */
     uint8_t full_mods = blecorne_central_get_display_mods();
     /* Extract right-side modifier bits (bits 4-7) into a nibble (bits 0-3) */
     uint8_t r_mods = (full_mods >> 4) & 0x0F;
@@ -120,6 +120,10 @@ static void send_mod_state(void) {
      * layer state of its own to derive either from. */
     uint8_t payload = r_mods | (is_mac ? BIT(4) : 0) | (is_colemak ? BIT(5) : 0);
     bt_gatt_write_without_response(periph_conn, mod_char_handle, &payload, 1, false);
+}
+
+void modifier_sync_notify_mods_changed(void) {
+    send_mod_state();
 }
 
 static int keycode_event_cb(const zmk_event_t *eh) {
