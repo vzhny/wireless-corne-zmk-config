@@ -53,16 +53,17 @@ static uint8_t cbuf_bot[CANVAS_BUF_SIZE];
 
 /* ── Layer names ─────────────────────────────────────────────────────── */
 
-/* Layers 0-3 (Qwerty/Colemak x Win/Mac) all show "Base" - the modifier
- * row's icons-vs-text already shows Win vs Mac (see render_mod_canvas),
- * and the peripheral's layout row shows Qwerty vs Colemak, so this name
- * doesn't need to carry either distinction, and there isn't room for a
- * full "Colemak (Win)"-style name at this font size anyway. */
+/* Layers 0-4 (Qwerty Win/Win-profile/Mac x Colemak Win/Mac) all show "Base" -
+ * the modifier row's icons-vs-text already shows Win vs Mac (see
+ * render_mod_canvas), and the peripheral's layout row shows Qwerty vs
+ * Colemak, so this name doesn't need to carry either distinction, and there
+ * isn't room for a full "Colemak (Win)"-style name at this font size
+ * anyway. */
 static const char *layer_names[] = {
+    "Base", "Base", "Base",
     "Base", "Base",
-    "Base", "Base",
-    /* Order must match blecorne.keymap's layer indices - Admin (8) has to
-     * stay numerically above Func (7), see the conditional_layers comment
+    /* Order must match blecorne.keymap's layer indices - Admin (9) has to
+     * stay numerically above Func (8), see the conditional_layers comment
      * there for why. */
     "Num", "Nav", "Sym", "Func", "Admin",
 };
@@ -71,6 +72,18 @@ static const char *layer_names[] = {
 
 static const char *get_layer_name(uint8_t idx) {
     return (idx < LAYER_NAME_COUNT) ? layer_names[idx] : "???";
+}
+
+/* LAYER_QWERTY_MAC/LAYER_COLEMAK_MAC (blecorne_central.h) determine the
+ * mac/win display flag directly from which specific profile layer is toggled
+ * on, instead of zmk_keymap_highest_layer_active(). The latter breaks the
+ * moment NUM/NAV/SYM/FUNC/ADMIN stack on top of a profile (their layer
+ * indices are all higher than any profile's), which made the mod row
+ * silently fall back to showing Win glyphs while e.g. ADMIN was held on top
+ * of Qwerty Mac - confirmed on real hardware. */
+static bool is_mac_active(void) {
+    return zmk_keymap_layer_active(LAYER_QWERTY_MAC) ||
+           zmk_keymap_layer_active(LAYER_COLEMAK_MAC);
 }
 
 /* ── HID modifier masks ──────────────────────────────────────────────── *
@@ -280,7 +293,7 @@ static void render_mod_canvas(struct central_state *state) {
     canvas_draw_rect(canvas_mid, 0, 0, CANVAS_SIZE, 1, &rule_dsc);
     canvas_draw_rect(canvas_mid, 0, CANVAS_SIZE - 1, CANVAS_SIZE, 1, &rule_dsc);
 
-    bool is_mac = (state->active_layer == 1 || state->active_layer == 3);
+    bool is_mac = is_mac_active();
     uint32_t mods = shadow_mods;
 
     bool shift_active = !!(mods & MOD_LSHIFT);
@@ -409,7 +422,7 @@ static void shadow_slot_timeout(struct k_work *work) {
     if (!slot->held) {
         return; /* released before the timer fired - a tap, not a hold */
     }
-    bool is_mac = (widget_state.active_layer == 1 || widget_state.active_layer == 3);
+    bool is_mac = is_mac_active();
     slot->applied_bit = (slot->swaps_with_mac && is_mac) ? slot->bit_mac : slot->bit_win;
     slot->fired = true;
     shadow_mods |= slot->applied_bit;

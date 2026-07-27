@@ -112,9 +112,16 @@ static void send_mod_state(void) {
     uint8_t full_mods = blecorne_central_get_display_mods();
     /* Extract right-side modifier bits (bits 4-7) into a nibble (bits 0-3) */
     uint8_t r_mods = (full_mods >> 4) & 0x0F;
-    uint8_t active_layer = zmk_keymap_highest_layer_active();
-    bool is_mac     = (active_layer == 1 || active_layer == 3);
-    bool is_colemak = (active_layer == 2 || active_layer == 3);
+    /* Query the specific profile layers directly (LAYER_* from
+     * blecorne_central.h) rather than zmk_keymap_highest_layer_active() -
+     * that returns whichever active layer has the highest index, which is
+     * NUM/NAV/SYM/FUNC/ADMIN (all higher than any profile layer) the moment
+     * one of those stacks on top of a profile, silently reporting Win/Qwerty
+     * regardless of the real active profile. */
+    bool is_mac     = zmk_keymap_layer_active(LAYER_QWERTY_MAC) ||
+                      zmk_keymap_layer_active(LAYER_COLEMAK_MAC);
+    bool is_colemak = zmk_keymap_layer_active(LAYER_COLEMAK_WIN) ||
+                      zmk_keymap_layer_active(LAYER_COLEMAK_MAC);
     /* Bit 4: Mac/Win glyph-order flag. Bit 5: Qwerty/Colemak flag (drives
      * the peripheral's layout-name row). Peripheral has no local keymap/
      * layer state of its own to derive either from. */

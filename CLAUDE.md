@@ -9,6 +9,9 @@ Boardsource Wireless SMT Corne split keyboard running ZMK firmware.
 - Board: `blecorne_left` / `blecorne_right` (nRF52840, Adafruit UF2 bootloader)
 - CI: GitHub Actions → `zmkfirmware/zmk` build-user-config workflow (reads `build.yaml` only)
 - ZMK pinned to `f84ef436` (not tracking `main`) — see `config/west.yml` and `.github/workflows/build.yml`. Bump deliberately, then re-verify build.
+- `README.md` has vendor-level hardware reference (product page, expansion-header
+  pinout, battery connector/dimensions) not duplicated here — check it before wiring
+  new hardware, rather than re-deriving pinout from the `.dtsi`.
 
 ## Display Preview
 
@@ -108,7 +111,7 @@ confirming on real hardware it does something.
 ```
 config/
   blecorne.conf               — Kconfig values (display, BLE)
-  blecorne.keymap             — Keymap (layers 0-8, combos, HRMs)
+  blecorne.keymap             — Keymap (layers 0-9, combos, HRMs)
   CMakeLists.txt              — Build sources (display widgets)
   custom_status_screen.c      — ZMK display entry point
   widgets/
@@ -304,9 +307,13 @@ Central writes a single byte to peripheral (on keycode *and* layer events - laye
 changes affect bits 4-5, not just the R-mod nibble):
 - Bits 0-3: R-mod nibble, `(full_mods >> 4) & 0x0F`. Peripheral bit mapping:
   `bit0=RCtrl, bit1=RShift, bit2=RAlt, bit3=RGUI`.
-- Bit 4: `is_mac` (`active_layer == 1 || active_layer == 3`) - Mac vs Win glyph order.
-- Bit 5: `is_colemak` (`active_layer == 2 || active_layer == 3`) - drives the
-  peripheral's layout-name row (`"Qwerty"`/`"Colemak"`).
+- Bit 4: `is_mac` - Mac vs Win glyph order.
+- Bit 5: `is_colemak` - drives the peripheral's layout-name row (`"Qwerty"`/`"Colemak"`).
+
+Both flags are computed by checking whether the specific profile layer
+(`zmk_keymap_layer_active(LAYER_QWERTY_MAC)` etc, `blecorne_central.h`) is active, **not**
+by comparing `zmk_keymap_highest_layer_active()` against a layer number - see Layer
+names below for why that broke on real hardware.
 
 Peripheral has no local keymap/layer state of its own (see the ZMK compile-guard note
 elsewhere in this doc), so both flags have to be forwarded - this byte is peripheral's
@@ -319,34 +326,54 @@ flips.
 
 ```c
 static const char *layer_names[] = {
-    "Base", "Base",
+    "Base", "Base", "Base",
     "Base", "Base",
     "Num", "Nav", "Sym", "Func", "Admin",
 };
 ```
 
-Layers 0-3 (Qwerty/Colemak × Win/Mac) all show **"Base"** now, not "Qwerty"/"Colemak" -
-drawn at `pixel_operator_mono_large` (bigger, for readability), and at 10px/char even
-"Colemak (Win)"-style full names never fit, let alone with a suffix. The two
-distinctions this used to carry moved elsewhere instead of being dropped: Win vs Mac is
-shown by the modifier row's icons-vs-text (see Fonts above), Qwerty vs Colemak by the
-peripheral's new layout-name row (see Modifier sync below) - central has no equivalent
-row of its own for this since its layer canvas is fully occupied by "Base" or the
-non-base layer names (Num/Nav/etc).
+Layer order (`blecorne.keymap`): `0` qwerty_win, `1` qwerty_win_profile (fully
+transparent - exists only as an explicit Admin `&tog 1` target so Qwerty Win is
+selectable symmetric with the other three profiles, since layer 0 itself can't safely be
+toggled), `2` qwerty_mac, `3` colemak_win, `4` colemak_mac, `5` num, `6` nav, `7` sym,
+`8` func, `9` admin. Admin's homerow-left toggles: `tog 1`=Qwerty Win, `tog 2`=Qwerty
+Mac, `tog 3`=Colemak Win, `tog 4`=Colemak Mac - all runtime-only (off on power cycle).
 
-**Func is 7, Admin is 8 - Admin must be the higher index.** `zmk_keymap_highest_layer_active()`
-(used by both `layer_event_cb` here and `send_mod_state()` in `modifier_sync_central.c`)
-returns whichever active layer has the highest numeric index, not the most-recently-
-activated one. Admin is a conditional layer (`blecorne.keymap`'s `conditional_layers`,
-`if-layers = <4 7>` NUM+FUNC or `<4 5>` NUM+NAV, `then-layer = <8>`) that stacks on top
-of whatever momentary layers triggered it - if Admin's index were *lower* than Func's
-(as it originally was: Admin=7, Func=8), holding NUM+FUNC would correctly activate
-Admin's keymap bindings but the display would still say "Func", since 8 > 7. Confirmed
-on real hardware before the swap. If a new conditional layer is ever added, give it the
+Layers 0-4 (Qwerty Win/Win-profile/Mac × Colemak Win/Mac) all show **"Base"** now, not
+"Qwerty"/"Colemak" - drawn at `pixel_operator_mono_large` (bigger, for readability), and
+at 10px/char even "Colemak (Win)"-style full names never fit, let alone with a suffix.
+The two distinctions this used to carry moved elsewhere instead of being dropped: Win vs
+Mac is shown by the modifier row's icons-vs-text (see Fonts above), Qwerty vs Colemak by
+the peripheral's new layout-name row (see Modifier sync below) - central has no
+equivalent row of its own for this since its layer canvas is fully occupied by "Base" or
+the non-base layer names (Num/Nav/etc).
+
+**Func is 8, Admin is 9 - Admin must be the higher index.** `zmk_keymap_highest_layer_active()`
+(used by `layer_event_cb` here, for the layer-name text only) returns whichever active
+layer has the highest numeric index, not the most-recently-activated one. Admin is a
+conditional layer (`blecorne.keymap`'s `conditional_layers`, `if-layers = <5 8>` NUM+FUNC
+or `<5 6>` NUM+NAV, `then-layer = <9>`) that stacks on top of whatever momentary layers
+triggered it - if Admin's index were *lower* than Func's, holding NUM+FUNC would
+correctly activate Admin's keymap bindings but the display would still say "Func".
+Confirmed on real hardware. If a new conditional layer is ever added, give it the
 highest index of anything it can combine with, not just the next free number.
 
-Layers 1 and 3 trigger Mac modifier order (⇧⌘⌃⌥ / ⌥⌃⌘⇧). Layers 2 and 3 trigger
-`is_colemak` for the peripheral's layout row.
+**`is_mac`/`is_colemak` must NOT be derived from `zmk_keymap_highest_layer_active()` -
+confirmed broken on real hardware.** That call returns whichever active layer has the
+highest index, and NUM/NAV/SYM/FUNC/ADMIN (5-9) are all higher than every profile layer
+(0-4) - so the instant one of those momentary/conditional layers stacks on top of a
+profile (e.g. holding Admin while on Qwerty Mac), the highest-active layer becomes 8 or
+9, `active_layer == LAYER_QWERTY_MAC` reads false, and the mod row silently flips to
+Windows glyphs/order until you drop back to just the base layer. `is_mac_active()`
+(`blecorne_central.c`) and `send_mod_state()` (`modifier_sync_central.c`) instead check
+`zmk_keymap_layer_active(LAYER_QWERTY_MAC) || zmk_keymap_layer_active(LAYER_COLEMAK_MAC)`
+directly (`LAYER_QWERTY_MAC`/`LAYER_COLEMAK_WIN`/`LAYER_COLEMAK_MAC` = 2/3/4, defined once
+in `blecorne_central.h` and shared by both files) - that stays correct regardless of what
+else is stacked on top, since it asks "is this specific toggle bit set", not "what's
+currently highest". `widget_state.active_layer` (still `highest_layer_active()`) is only
+used for the layer-*name* text, where "show whichever is highest" (e.g. "Admin" while
+Admin is held) is the actually-correct behavior - don't collapse these two back into one
+call.
 
 ### Layout name (peripheral widget)
 
@@ -509,6 +536,18 @@ per-position timer does when both of its thumb positions happen to be held toget
 
 ```bash
 # CI builds on push via GitHub Actions (build.yaml)
+# Download: grab firmware.uf2 (left/right) from the Actions run's artifacts tab
 # Local: requires west workspace with ZMK — not checked in here
 # Flash: drag UF2 onto bootloader drive (double-tap reset)
 ```
+
+**Why `config/CMakeLists.txt` (custom_status_screen.c, all widget/font/split sources)
+actually gets compiled, when nothing in `build.yaml`/`west.yml` says so directly:**
+`ZMK_CONFIG` only wires up `.conf`/`.overlay`/keymap files, never a `CMakeLists.txt` —
+what pulls this repo's `config/CMakeLists.txt` into the build is `zephyr/module.yml`
+(`build.cmake: config`), which registers this repo as a Zephyr module via
+`ZMK_EXTRA_MODULES`. Missing that key means the custom display/split code silently
+never compiles — no error, just `zmk_display_status_screen()` falling back to ZMK's
+weak-stub default (`<err> zmk: No status screen provided` at runtime). This was the
+root cause of a real multi-day first-flash debugging session; don't remove or
+"simplify" `zephyr/module.yml` without understanding this.

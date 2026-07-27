@@ -2,6 +2,16 @@
 
 #include <lvgl.h>
 
+/* Base-profile layer indices (blecorne.keymap order) - shared with
+ * modifier_sync_central.c so both the local display and the peripheral GATT
+ * payload derive is_mac/is_colemak the same way: checking whether these
+ * specific profile layers are active, not zmk_keymap_highest_layer_active()
+ * (which breaks once NUM/NAV/SYM/FUNC/ADMIN stack on top of a profile - see
+ * blecorne_central.c). Update if the keymap's layer order ever changes. */
+#define LAYER_QWERTY_MAC  2
+#define LAYER_COLEMAK_WIN 3
+#define LAYER_COLEMAK_MAC 4
+
 struct blecorne_central_widget {
     lv_obj_t *obj;
 };
