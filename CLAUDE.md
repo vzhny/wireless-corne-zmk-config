@@ -414,7 +414,12 @@ BT-profile equivalent), just the right-aligned `%`.
   math above - don't "clean them up" back to round numbers.** First-flash testing on
   actual nice!view modules found: central's battery/bolt icon sitting slightly past
   the true right edge (nudged from `x=44` to `x=40`, battery/bolt icon only - the row 2
-  `%` text position was already fine, left as-is); peripheral's battery icon
+  `%` text position was already fine, left as-is). A second round of hardware testing
+  found `x=40` still clipped off the right edge - nudged again to `x=36` (edgeInset 8),
+  matching the correction magnitude the peripheral's battery icon already needed (below)
+  rather than being a smaller, central-only fudge - if this ever needs another nudge,
+  check whether the peripheral needs the same change first before guessing a new value;
+  peripheral's battery icon
   (`x=44`→`x=36`) and its `%` text (`x=28`→`x=20`) moved together by the same 8px,
   worse than central's needed since that's the half with a real battery installed and
   it was genuinely clipping off the display edge; peripheral's wifi icon (`x=0,y=0` →

@@ -240,13 +240,13 @@ static void render_status_canvas(struct central_state *state) {
     draw_status_icon(canvas_bot, 0, 0, 24, ICON_BT, bt_connected || flash_on, LV_TEXT_ALIGN_LEFT);
 
     if (state->charging) {
-        draw_status_icon(canvas_bot, 40, 0, 24, ICON_BOLT, true, LV_TEXT_ALIGN_RIGHT);
+        draw_status_icon(canvas_bot, 36, 0, 24, ICON_BOLT, true, LV_TEXT_ALIGN_RIGHT);
     } else if (state->battery_level <= 5) {
         if (flash_on) {
-            draw_status_icon(canvas_bot, 40, 0, 24, ICON_BATTERY_EMPTY, true, LV_TEXT_ALIGN_RIGHT);
+            draw_status_icon(canvas_bot, 36, 0, 24, ICON_BATTERY_EMPTY, true, LV_TEXT_ALIGN_RIGHT);
         }
     } else {
-        draw_status_icon(canvas_bot, 40, 0, 24, battery_icon(state->battery_level), true, LV_TEXT_ALIGN_RIGHT);
+        draw_status_icon(canvas_bot, 36, 0, 24, battery_icon(state->battery_level), true, LV_TEXT_ALIGN_RIGHT);
     }
 
     /* pixel_operator_mono_large is a fixed 10px/char, so field widths are

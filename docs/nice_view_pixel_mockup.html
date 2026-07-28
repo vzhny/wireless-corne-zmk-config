@@ -520,14 +520,16 @@ function renderCentral(state) {
     // Battery: one of five discrete Font Awesome levels (batteryIcon()), not
     // a continuous fill. <=5% shows battEmpty (blinks on real hardware via
     // flash_on - this static preview just always shows it). Charging
-    // replaces the battery icon entirely with the bolt glyph. edgeInset=4
-    // matches blecorne_central.c's x=40 (a real-hardware calibration nudge).
+    // replaces the battery icon entirely with the bolt glyph. edgeInset=8
+    // matches blecorne_central.c's x=36 (real-hardware calibration nudge;
+    // the original edgeInset=4/x=40 still clipped on real hardware, so this
+    // now matches the peripheral's edgeInset=8 correction).
     if (state.charging) {
-      drawIcon(buf, ICONS.bolt, true, 'right', undefined, 4);
+      drawIcon(buf, ICONS.bolt, true, 'right', undefined, 8);
     } else if (state.battery <= 5) {
-      drawIcon(buf, ICONS.battEmpty, true, 'right', undefined, 4);
+      drawIcon(buf, ICONS.battEmpty, true, 'right', undefined, 8);
     } else {
-      drawIcon(buf, batteryIcon(state.battery), true, 'right', undefined, 4);
+      drawIcon(buf, batteryIcon(state.battery), true, 'right', undefined, 8);
     }
     drawText(buf, 28, 20, 40, `${state.battery}%`, 16, 'right');
     // Blank while searching - the flashing BT glyph above is the only "still
@@ -602,9 +604,8 @@ function renderPeripheral(state) {
     // in renderCentral. edgeInset=3/topPad=5 matches blecorne_peripheral.c's
     // x=3,y=3 (a real-hardware calibration nudge, see that file's comment).
     drawIcon(buf, ICONS.wifi, state.connected || state.flashOn, 'left', ICON_SIZE_WIFI, 3, 5);
-    // edgeInset=8 matches blecorne_peripheral.c's x=36 - this half's
-    // battery icon needed a bigger edge correction than central's charging
-    // icon (see that file's comment).
+    // edgeInset=8 matches blecorne_peripheral.c's x=36 - same edge
+    // correction magnitude central's battery/bolt icon now uses (x=36).
     if (state.battery <= 5) {
       drawIcon(buf, ICONS.battEmpty, true, 'right', undefined, 8);
     } else {
