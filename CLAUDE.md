@@ -439,7 +439,7 @@ BT-profile equivalent), just the right-aligned `%`.
 
 ### Homerow mods
 
-`hml` (left) / `hmr` (right): balanced flavor, 280 ms tapping-term, 175 ms quick-tap,
+`hml` (left) / `hmr` (right): balanced flavor, 200 ms tapping-term, 175 ms quick-tap,
 150 ms require-prior-idle, `hold-trigger-key-positions` (opposite hand + thumbs).
 
 **No `hold-trigger-on-release`** (removed from both). That flag deferred the tap/hold
@@ -458,11 +458,12 @@ neither reaches the display (or HID) until then. This is inherent to `"balanced"
 something `hold-trigger-on-release` caused, and it's still true after that fix.
 
 `thm` (thumb shift/key, tap = key, hold = modifier, tap-then-hold = repeat key): also
-`"balanced"`, 225 ms tapping-term, 175 ms quick-tap. Briefly tried `"hold-preferred"`
+`"balanced"`, 200 ms tapping-term, 175 ms quick-tap. Briefly tried `"hold-preferred"`
 here to get faster resolution, but confirmed on hardware it didn't meaningfully help and
 made this key behave differently from `hml`/`hmr` for no real benefit - reverted.
-**Don't change `hml`/`hmr`/`thm`'s flavor, tapping-term, or other tap/hold timing** -
-these are tuned to how the user actually types and are deliberately out of scope for
+**Don't change `hml`/`hmr`/`thm`'s flavor or other tap/hold timing without the user
+asking** - these are tuned to how the user actually types (tapping-term last set to
+200 ms across all three, per explicit request) and are deliberately out of scope for
 the "modifiers don't show in real time" problem; solve that on the display side (see
 below) instead of by changing what these keys actually do.
 

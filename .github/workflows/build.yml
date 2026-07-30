@@ -10,7 +10,7 @@ jobs:
         id: name
         run: |
           ts=$(TZ="America/New_York" date +"%m%d%Y-%H%M%S")
-          echo "archive_name=${GITHUB_REF_NAME}-${ts}-firmware" >> "$GITHUB_OUTPUT"
+          echo "archive_name=${GITHUB_REF_NAME}-${ts}-corne-firmware" >> "$GITHUB_OUTPUT"
 
   build:
     needs: vars
