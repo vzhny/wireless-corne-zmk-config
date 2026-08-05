@@ -111,21 +111,21 @@ confirming on real hardware it does something.
 ```
 config/
   blecorne.conf               — Kconfig values (display, BLE)
-  blecorne.keymap             — Keymap (layers 0-9, combos, HRMs)
+  blecorne.keymap             — Keymap (layers 0-7, combos, HRMs)
   CMakeLists.txt              — Build sources (display widgets)
   custom_status_screen.c      — ZMK display entry point
   widgets/
     util.h / util.c           — rotate_canvas, canvas_draw_* primitives
     fonts/
       pixel_operator_mono.h/.c       — "Ctl"/"Win"/"Alt" mod-cell text only, size 16
-      pixel_operator_mono_large.h/.c — Layer name, layout name, BT profile/battery %, size 20
+      pixel_operator_mono_large.h/.c — Layer name, BT profile/battery %, size 20
       icon_font.h/.c                 — Modifier-row icons (shift/ctrl/cmd/opt), size 24
       status_icon_font.h/.c          — Status-row icons (bt/wifi/battery*5/bolt), size 18
       status_icon_font_wifi.h/.c     — Peripheral-only: wifi icon alone, size 16 (smaller)
     blecorne_central.c        — Left half widget (status + mods + layer name)
-    blecorne_peripheral.c     — Right half widget (status + mods + layout name)
+    blecorne_peripheral.c     — Right half widget (status + mods)
   split/
-    modifier_sync_central.c   — BLE GATT client: writes R-mod nibble + is_mac + is_colemak to peripheral
+    modifier_sync_central.c   — BLE GATT client: writes R-mod nibble + is_mac to peripheral
     modifier_sync_peripheral.c — BLE GATT server: receives that byte, calls update_mods
 boards/boardsource/blecorne/
   blecorne.dtsi               — Shared DTS: blue_led P1.09, ext_power P0.31, vbatt ADC
@@ -149,12 +149,15 @@ gets whichever size actually fits it, rather than compromising on one:
 | Font | Size | `adv_w`/`line_height` | Used for |
 |------|------|------------------------|----------|
 | `pixel_operator_mono` | 16 | 8px/char, 13px | "Ctl"/"Win"/"Alt" mod-cell text only |
-| `pixel_operator_mono_large` | 20 | 10px/char, 16px | Layer name, peripheral's layout name, BT profile/battery `%` - bigger for readability |
+| `pixel_operator_mono_large` | 20 | 10px/char, 16px | Layer name, BT profile/battery `%` - bigger for readability |
 
 There used to be a third, `pixel_operator_mono_small` (size 10), for the peripheral's
 layout row when it showed `"QWERTY"`/`"COLEMAK-DH"` - removed once that text shortened
 to `"Qwerty"`/`"Colemak"` and moved to `pixel_operator_mono_large` to match the layer
-name's size (see Status strip below). Both remaining fonts come from
+name's size (see Status strip below). That layout row itself was later removed
+entirely once the Colemak-DH base layers were dropped (see Layer names below) - only
+one letter-layout remained, leaving nothing for the row to distinguish. Both remaining
+fonts come from
 `PixelOperatorMono.ttf` (CC0, a font actually designed pixel-by-pixel for bitmap
 displays), `-r 0x20-0x7F` (ASCII).
 
@@ -304,86 +307,81 @@ partially used (status) or hardware-truncated (layer).
 ### Modifier sync (split custom GATT)
 
 Central writes a single byte to peripheral (on keycode *and* layer events - layer
-changes affect bits 4-5, not just the R-mod nibble):
+changes affect bit 4, not just the R-mod nibble):
 - Bits 0-3: R-mod nibble, `(full_mods >> 4) & 0x0F`. Peripheral bit mapping:
   `bit0=RCtrl, bit1=RShift, bit2=RAlt, bit3=RGUI`.
 - Bit 4: `is_mac` - Mac vs Win glyph order.
-- Bit 5: `is_colemak` - drives the peripheral's layout-name row (`"Qwerty"`/`"Colemak"`).
 
-Both flags are computed by checking whether the specific profile layer
-(`zmk_keymap_layer_active(LAYER_QWERTY_MAC)` etc, `blecorne_central.h`) is active, **not**
+`is_mac` is computed by checking whether the specific profile layer
+(`zmk_keymap_layer_active(LAYER_QWERTY_MAC)`, `blecorne_central.h`) is active, **not**
 by comparing `zmk_keymap_highest_layer_active()` against a layer number - see Layer
 names below for why that broke on real hardware.
 
 Peripheral has no local keymap/layer state of its own (see the ZMK compile-guard note
-elsewhere in this doc), so both flags have to be forwarded - this byte is peripheral's
-only source of truth for anything layer-related. `blecorne_peripheral_update_mods()`
-only re-renders the layout row when `is_colemak` actually *changes* (not on every
-keycode), since that GATT write happens on every keystroke but the flag itself rarely
-flips.
+elsewhere in this doc), so this flag has to be forwarded - this byte is peripheral's
+only source of truth for anything layer-related.
+
+There used to be a second flag here, `is_colemak` (bit 5), driving the peripheral's
+layout-name row (`"Qwerty"`/`"Colemak"`) - removed along with the Colemak-DH base
+layers (see Layer names below); Qwerty is now the only letter-layout, so there's
+nothing left for that bit to distinguish.
 
 ### Layer names (central widget)
 
 ```c
 static const char *layer_names[] = {
     "Base", "Base", "Base",
-    "Base", "Base",
     "Num", "Nav", "Sym", "Func", "Admin",
 };
 ```
 
 Layer order (`blecorne.keymap`): `0` qwerty_win, `1` qwerty_win_profile (fully
 transparent - exists only as an explicit Admin `&tog 1` target so Qwerty Win is
-selectable symmetric with the other three profiles, since layer 0 itself can't safely be
-toggled), `2` qwerty_mac, `3` colemak_win, `4` colemak_mac, `5` num, `6` nav, `7` sym,
-`8` func, `9` admin. Admin's homerow-left toggles: `tog 1`=Qwerty Win, `tog 2`=Qwerty
-Mac, `tog 3`=Colemak Win, `tog 4`=Colemak Mac - all runtime-only (off on power cycle).
+selectable symmetric with the other profile, since layer 0 itself can't safely be
+toggled), `2` qwerty_mac, `3` num, `4` nav, `5` sym, `6` func, `7` admin. Admin's
+homerow-left toggles: `tog 1`=Qwerty Win, `tog 2`=Qwerty Mac - both runtime-only (off
+on power cycle).
 
-Layers 0-4 (Qwerty Win/Win-profile/Mac × Colemak Win/Mac) all show **"Base"** now, not
-"Qwerty"/"Colemak" - drawn at `pixel_operator_mono_large` (bigger, for readability), and
-at 10px/char even "Colemak (Win)"-style full names never fit, let alone with a suffix.
-The two distinctions this used to carry moved elsewhere instead of being dropped: Win vs
-Mac is shown by the modifier row's icons-vs-text (see Fonts above), Qwerty vs Colemak by
-the peripheral's new layout-name row (see Modifier sync below) - central has no
-equivalent row of its own for this since its layer canvas is fully occupied by "Base" or
-the non-base layer names (Num/Nav/etc).
+This repo used to also have Colemak-DH Win/Mac base layers (`colemak_win`/`colemak_mac`,
+indices 3-4, toggled via `tog 3`/`tog 4`) - **removed** (2026-08-05) to keep Qwerty
+(Win + Mac) only, mirroring the same change made in the KLOR sibling config in the
+opposite direction (Qwerty removed there, Colemak-DH kept). Intentional, not a
+regression - re-adding Colemak here means re-inserting two base layers before NUM,
+which renumbers every layer index below and every reference to it (conditional_layers,
+combos' `layers = <...>`, `LAYER_QWERTY_MAC`, `layer_names[]`) - redo the full
+old→new layer table exercise rather than patching numbers by feel.
 
-**Func is 8, Admin is 9 - Admin must be the higher index.** `zmk_keymap_highest_layer_active()`
+Layers 0-2 (Qwerty Win/Win-profile/Mac) all show **"Base"** - drawn at
+`pixel_operator_mono_large` (bigger, for readability). Win vs Mac is shown by the
+modifier row's icons-vs-text instead (see Fonts above) - central has no separate row
+for that distinction since its layer canvas is fully occupied by "Base" or the
+non-base layer names (Num/Nav/etc).
+
+**Func is 6, Admin is 7 - Admin must be the higher index.** `zmk_keymap_highest_layer_active()`
 (used by `layer_event_cb` here, for the layer-name text only) returns whichever active
 layer has the highest numeric index, not the most-recently-activated one. Admin is a
-conditional layer (`blecorne.keymap`'s `conditional_layers`, `if-layers = <5 8>` NUM+FUNC
-or `<5 6>` NUM+NAV, `then-layer = <9>`) that stacks on top of whatever momentary layers
+conditional layer (`blecorne.keymap`'s `conditional_layers`, `if-layers = <3 6>` NUM+FUNC
+or `<3 4>` NUM+NAV, `then-layer = <7>`) that stacks on top of whatever momentary layers
 triggered it - if Admin's index were *lower* than Func's, holding NUM+FUNC would
 correctly activate Admin's keymap bindings but the display would still say "Func".
 Confirmed on real hardware. If a new conditional layer is ever added, give it the
 highest index of anything it can combine with, not just the next free number.
 
-**`is_mac`/`is_colemak` must NOT be derived from `zmk_keymap_highest_layer_active()` -
+**`is_mac` must NOT be derived from `zmk_keymap_highest_layer_active()` -
 confirmed broken on real hardware.** That call returns whichever active layer has the
-highest index, and NUM/NAV/SYM/FUNC/ADMIN (5-9) are all higher than every profile layer
-(0-4) - so the instant one of those momentary/conditional layers stacks on top of a
-profile (e.g. holding Admin while on Qwerty Mac), the highest-active layer becomes 8 or
-9, `active_layer == LAYER_QWERTY_MAC` reads false, and the mod row silently flips to
+highest index, and NUM/NAV/SYM/FUNC/ADMIN (3-7) are all higher than every profile layer
+(0-2) - so the instant one of those momentary/conditional layers stacks on top of a
+profile (e.g. holding Admin while on Qwerty Mac), the highest-active layer becomes 6 or
+7, `active_layer == LAYER_QWERTY_MAC` reads false, and the mod row silently flips to
 Windows glyphs/order until you drop back to just the base layer. `is_mac_active()`
 (`blecorne_central.c`) and `send_mod_state()` (`modifier_sync_central.c`) instead check
-`zmk_keymap_layer_active(LAYER_QWERTY_MAC) || zmk_keymap_layer_active(LAYER_COLEMAK_MAC)`
-directly (`LAYER_QWERTY_MAC`/`LAYER_COLEMAK_WIN`/`LAYER_COLEMAK_MAC` = 2/3/4, defined once
-in `blecorne_central.h` and shared by both files) - that stays correct regardless of what
-else is stacked on top, since it asks "is this specific toggle bit set", not "what's
-currently highest". `widget_state.active_layer` (still `highest_layer_active()`) is only
-used for the layer-*name* text, where "show whichever is highest" (e.g. "Admin" while
-Admin is held) is the actually-correct behavior - don't collapse these two back into one
-call.
-
-### Layout name (peripheral widget)
-
-`render_layout_canvas()` draws `"Qwerty"`/`"Colemak"` (not `"QWERTY"`/`"COLEMAK-DH"` -
-shortened so it actually reads at this size) in `canvas_top`, same font, size, and `y`
-as central's layer name (`pixel_operator_mono_large`, `y=5`) so the two halves read as
-a matching pair. This used to be its own dedicated small font
-(`pixel_operator_mono_small`, size 10) sized just to fit the longer strings - removed
-once the strings themselves shortened, since reusing `pixel_operator_mono_large`
-needed no separate font at all.
+`zmk_keymap_layer_active(LAYER_QWERTY_MAC)` directly (`LAYER_QWERTY_MAC` = 2, defined
+once in `blecorne_central.h` and shared by both files) - that stays correct regardless
+of what else is stacked on top, since it asks "is this specific toggle bit set", not
+"what's currently highest". `widget_state.active_layer` (still `highest_layer_active()`)
+is only used for the layer-*name* text, where "show whichever is highest" (e.g. "Admin"
+while Admin is held) is the actually-correct behavior - don't collapse these two back
+into one call.
 
 No layer-number circles anymore (removed — at 10px they were too small to read
 reliably; `draw_circle` was deleted from `util.c`/`util.h` since nothing called it
@@ -391,6 +389,16 @@ after removal, and `CONFIG_LV_FONT_MONTSERRAT_8` dropped from `blecorne.conf` si
 circle numbers were its only user). The layer canvas is just the centered name — and
 since it now sits in the 24-visible-row slot (see Canvas layout above), the text draws
 at `y=5`, not vertically centered in the full 68px canvas.
+
+### Peripheral's canvas_top (unused)
+
+`render_layout_canvas()` (`blecorne_peripheral.c`) used to draw `"Qwerty"`/`"Colemak"`
+in `canvas_top` (`is_colemak`-driven, see Modifier sync above) - now that Colemak is
+gone, there's only one letter-layout to show, so this row is dead weight. Rather than
+leave a static "Qwerty" that never changes, the function now just clears the canvas and
+returns - `canvas_top` is blank on the peripheral, same as it was before the
+layout-name row was ever added. If a reason to use this row resurfaces, remember it's
+hardware-truncated to 24 visible rows (see Canvas layout above), same as central's.
 
 ### Status strip (`canvas_bot`, both halves)
 
@@ -526,8 +534,8 @@ those ever move):
 | 38 (L thumb) | LShift | LShift | fixed |
 | 39 (R thumb) | RShift | RShift | fixed |
 
-Colemak vs Qwerty doesn't affect this table - the homerow mod bindings sit at the same
-physical positions in both layouts, only the letters underneath change.
+This table is keyed by physical position, not by letter-layout - unaffected by the
+Colemak-DH base layers' removal (see Layer names above).
 
 ### Caps Word
 

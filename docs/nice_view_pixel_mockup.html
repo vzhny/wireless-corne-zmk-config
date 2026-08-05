@@ -176,13 +176,11 @@ canvas.actual-canvas {
       <select id="c_layer">
         <option value="0">0 - Qwerty (Win)</option>
         <option value="1">1 - Qwerty (Mac)</option>
-        <option value="2">2 - Colemak (Win)</option>
-        <option value="3">3 - Colemak (Mac)</option>
-        <option value="4">4 - Num</option>
-        <option value="5">5 - Nav</option>
-        <option value="6">6 - Sym</option>
-        <option value="7">7 - Func</option>
-        <option value="8">8 - Admin</option>
+        <option value="2">2 - Num</option>
+        <option value="3">3 - Nav</option>
+        <option value="4">4 - Sym</option>
+        <option value="5">5 - Func</option>
+        <option value="6">6 - Admin</option>
       </select>
     </div>
     <div class="group">
@@ -231,7 +229,6 @@ canvas.actual-canvas {
     </div>
     <div class="group">
       <label>Mac glyph order <input type="checkbox" id="p_is_mac"></label>
-      <label>Colemak layout <input type="checkbox" id="p_is_colemak"></label>
     </div>
     <div class="group">
       <label>Modifiers (right hand, synced from central)</label>
@@ -302,7 +299,7 @@ const BASE_TOP = 0, BASE_MID = 68, BASE_BOT = 136;
 
 // Order must match blecorne.keymap's layer indices - see its
 // conditional_layers comment for why Admin has to stay numerically above Func.
-const LAYER_NAMES = ["Base","Base","Base","Base","Num","Nav","Sym","Func","Admin"];
+const LAYER_NAMES = ["Base","Base","Num","Nav","Sym","Func","Admin"];
 
 // LVGL_BACKGROUND/FOREGROUND per config/widgets/util.h - plain black ink on
 // white background.
@@ -556,7 +553,7 @@ function renderCentral(state) {
     clearCanvas(buf);
     fillRect(buf, 0, 0, CANVAS_SIZE, 1, FG);
     fillRect(buf, 0, CANVAS_SIZE - 1, CANVAS_SIZE, 1, FG);
-    const isMac = (state.activeLayer === 1 || state.activeLayer === 3);
+    const isMac = (state.activeLayer === 1);
     const x0 = 4, x1 = 36, y0 = 6, y1 = 38;
     drawModIcon(buf, x0, y0, ICONS.shift, state.mods.shift);
     if (isMac) {
@@ -571,12 +568,10 @@ function renderCentral(state) {
     compositeCanvas(physBuf, buf, BASE_MID);
   }
 
-  // canvas_top: layer name, centered. Layers 0-3 all show "Base" - Win/Mac
-  // is shown by the modifier row's icons-vs-text instead, Qwerty/Colemak by
-  // the peripheral's layout row - there's no room for a full
-  // "Colemak (Win)"-style name at a readable size. This slot is
-  // hardware-truncated to 24 visible rows, so text sits at y=5, not
-  // vertically centered in the full canvas.
+  // canvas_top: layer name, centered. Layers 0-1 (Qwerty Win/Mac) both show
+  // "Base" - Win/Mac is shown by the modifier row's icons-vs-text instead.
+  // This slot is hardware-truncated to 24 visible rows, so text sits at
+  // y=5, not vertically centered in the full canvas.
   {
     const buf = makeCanvasBuf();
     clearCanvas(buf);
@@ -638,15 +633,12 @@ function renderPeripheral(state) {
     compositeCanvas(physBuf, buf, BASE_MID);
   }
 
-  // canvas_top: keyboard layout name ("Qwerty"/"Colmak") - forwarded by
-  // central the same way is_mac is (this half has no local keymap state).
-  // Same font/size/y as central's layer name (fontPx 16, y=5) so the two
-  // halves read as a pair. "Colmak" not "Colemak" - the full spelling
-  // (7 chars) doesn't fit at this font size.
+  // canvas_top: unused - this half has only one letter-layout (Qwerty) to
+  // show, and Mac/Win is already shown by the modifier row's icons-vs-text,
+  // so there's nothing left to put here. Left blank.
   {
     const buf = makeCanvasBuf();
     clearCanvas(buf);
-    drawText(buf, 0, 5, 68, state.isColemak ? 'Colmak' : 'Qwerty', 16, 'center');
     compositeCanvas(physBuf, buf, BASE_BOT, 23);
   }
 
@@ -689,7 +681,6 @@ function readPeripheralState() {
     flashOn: true, // static preview - real hardware blinks this every 500ms
     battery: parseInt(document.getElementById('p_battery').value, 10),
     isMac: document.getElementById('p_is_mac').checked,
-    isColemak: document.getElementById('p_is_colemak').checked,
     mods: {
       shift: document.getElementById('p_mod_shift').checked,
       ctrl: document.getElementById('p_mod_ctrl').checked,

@@ -53,17 +53,13 @@ static uint8_t cbuf_bot[CANVAS_BUF_SIZE];
 
 /* ── Layer names ─────────────────────────────────────────────────────── */
 
-/* Layers 0-4 (Qwerty Win/Win-profile/Mac x Colemak Win/Mac) all show "Base" -
- * the modifier row's icons-vs-text already shows Win vs Mac (see
- * render_mod_canvas), and the peripheral's layout row shows Qwerty vs
- * Colemak, so this name doesn't need to carry either distinction, and there
- * isn't room for a full "Colemak (Win)"-style name at this font size
- * anyway. */
+/* Layers 0-2 (Qwerty Win/Win-profile/Mac) all show "Base" - the modifier
+ * row's icons-vs-text already shows Win vs Mac (see render_mod_canvas), so
+ * this name doesn't need to carry that distinction too. */
 static const char *layer_names[] = {
     "Base", "Base", "Base",
-    "Base", "Base",
-    /* Order must match blecorne.keymap's layer indices - Admin (9) has to
-     * stay numerically above Func (8), see the conditional_layers comment
+    /* Order must match blecorne.keymap's layer indices - Admin (7) has to
+     * stay numerically above Func (6), see the conditional_layers comment
      * there for why. */
     "Num", "Nav", "Sym", "Func", "Admin",
 };
@@ -74,16 +70,15 @@ static const char *get_layer_name(uint8_t idx) {
     return (idx < LAYER_NAME_COUNT) ? layer_names[idx] : "???";
 }
 
-/* LAYER_QWERTY_MAC/LAYER_COLEMAK_MAC (blecorne_central.h) determine the
- * mac/win display flag directly from which specific profile layer is toggled
- * on, instead of zmk_keymap_highest_layer_active(). The latter breaks the
- * moment NUM/NAV/SYM/FUNC/ADMIN stack on top of a profile (their layer
- * indices are all higher than any profile's), which made the mod row
- * silently fall back to showing Win glyphs while e.g. ADMIN was held on top
- * of Qwerty Mac - confirmed on real hardware. */
+/* LAYER_QWERTY_MAC (blecorne_central.h) determines the mac/win display flag
+ * directly from whether that specific profile layer is toggled on, instead
+ * of zmk_keymap_highest_layer_active(). The latter breaks the moment
+ * NUM/NAV/SYM/FUNC/ADMIN stack on top of a profile (their layer indices are
+ * all higher than any profile's), which made the mod row silently fall back
+ * to showing Win glyphs while e.g. ADMIN was held on top of Qwerty Mac -
+ * confirmed on real hardware. */
 static bool is_mac_active(void) {
-    return zmk_keymap_layer_active(LAYER_QWERTY_MAC) ||
-           zmk_keymap_layer_active(LAYER_COLEMAK_MAC);
+    return zmk_keymap_layer_active(LAYER_QWERTY_MAC);
 }
 
 /* ── HID modifier masks ──────────────────────────────────────────────── *

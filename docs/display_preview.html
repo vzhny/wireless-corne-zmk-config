@@ -117,7 +117,7 @@ function L(o){
   var btState=o.btState||'connected', btProfile=o.btProfile||0,
       batt=o.batt||75, charging=o.charging||false,
       mods=o.mods||[0,0,0,0], isMac=o.isMac||false,
-      layer=o.layer||'Qwerty', activeLayer=o.activeLayer||0;
+      layer=o.layer||'Base', activeLayer=o.activeLayer||0;
   var s=mods[0],c=mods[1],g=mods[2],a=mods[3];
   var btVis = btState !== 'search-off';
   var isConnecting = btState === 'connecting';
@@ -158,18 +158,17 @@ function row(lbl,html){
 }
 
 var left = [
-  row('Qwerty\nBT 0 connected\n75% base layer', L({layer:'Qwerty',activeLayer:0})),
-  row('Qwerty (Mac mods)\nBT 0 90%\nlayer 1 active', L({batt:90,isMac:true,layer:'Qwerty',activeLayer:1})),
-  row('Colemak\nBT 0 60%\nlayer 2 active', L({batt:60,layer:'Colemak',activeLayer:2})),
-  row('Num\nBT 0 50%\nlayer 4 active', L({batt:50,layer:'Num',activeLayer:4})),
-  row('Sym\nBT 2 connecting\n(live 500ms anim)\n80% layer 6', L({btState:'connecting',btProfile:2,batt:80,layer:'Sym',activeLayer:6})),
-  row('Func\nBT 0 45% charging\nlayer 8 active', L({batt:45,charging:true,layer:'Func',activeLayer:8})),
+  row('Qwerty\nBT 0 connected\n75% base layer', L({layer:'Base',activeLayer:0})),
+  row('Qwerty (Mac mods)\nBT 0 90%\nlayer 2 active', L({batt:90,isMac:true,layer:'Base',activeLayer:2})),
+  row('Num\nBT 0 50%\nlayer 3 active', L({batt:50,layer:'Num',activeLayer:3})),
+  row('Sym\nBT 2 connecting\n(live 500ms anim)\n80% layer 5', L({btState:'connecting',btProfile:2,batt:80,layer:'Sym',activeLayer:5})),
+  row('Func\nBT 0 45% charging\nlayer 6 active', L({batt:45,charging:true,layer:'Func',activeLayer:6})),
 ];
 
 var right = [
   row('Qwerty (Win)\nConnected 80%\nno mods', R({batt:80})),
   row('Qwerty (Win)\nConnected 65%\nR-Shift held', R({batt:65,mods:[0,0,0,1]})),
-  row('Colemak (Mac)\nConnected 70%\nR-GUI held', R({batt:70,isMac:true,mods:[0,1,0,0]})),
+  row('Qwerty (Mac)\nConnected 70%\nR-GUI held', R({batt:70,isMac:true,mods:[0,1,0,0]})),
   row('Disconnected 14%', R({connected:false,batt:14})),
 ];
 

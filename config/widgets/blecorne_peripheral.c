@@ -24,8 +24,6 @@ struct peripheral_state {
     uint8_t battery_level;
     bool    connected;
     bool    is_mac;     /* Mac vs Win glyph order, forwarded by central over the sync GATT char */
-    bool    is_colemak; /* Qwerty vs Colemak, forwarded the same way - this half has no
-                         * local keymap/layer state to derive either flag from */
     uint8_t r_mods;     /* R-mod nibble: bit0=RCtrl, bit1=RShift, bit2=RAlt, bit3=RGUI */
 };
 
@@ -34,7 +32,7 @@ static struct peripheral_state widget_state;
 /* ── Canvases ────────────────────────────────────────────────────────── *
  * See blecorne_central.c's canvas comment for how these x offsets map to
  * physical display strips. */
-static lv_obj_t *canvas_top;    /* x=-44 -> bottom strip (layout name) */
+static lv_obj_t *canvas_top;    /* x=-44 -> bottom strip (unused, blank) */
 static lv_obj_t *canvas_mid;    /* x=24  -> middle strip (mods)        */
 static lv_obj_t *canvas_bot;    /* x=92 (TOP_RIGHT) -> top strip (status) */
 
@@ -210,21 +208,12 @@ static void render_mod_canvas(struct peripheral_state *state) {
     rotate_canvas(canvas_mid);
 }
 
-/* canvas_top (24 px visible, see canvas comment above) - keyboard layout
- * name, forwarded by central over the same sync GATT char as is_mac (this
- * half has no local keymap state to derive it from). Same font and y as
- * central's layer name so the two halves read as a matching pair.
- * "Colmak" rather than "Colemak" - pixel_operator_mono_large is a fixed
- * 10px/char, and "Colemak" (7 chars, 70px) doesn't fit the 68px canvas. */
-static void render_layout_canvas(struct peripheral_state *state) {
+/* canvas_top (24 px visible, see canvas comment above) - unused: this half
+ * has only one letter-layout (Qwerty) to show, and Mac/Win is already shown
+ * by the modifier row's icons-vs-text, so there's nothing left to put here.
+ * Cleared once at init and never redrawn. */
+static void render_layout_canvas(void) {
     clear_canvas(canvas_top);
-
-    lv_draw_label_dsc_t lbl;
-    init_label_dsc(&lbl, LVGL_FOREGROUND, &pixel_operator_mono_large);
-    lbl.align = LV_TEXT_ALIGN_CENTER;
-    canvas_draw_text(canvas_top, 0, 5, CANVAS_SIZE, &lbl,
-                     state->is_colemak ? "Colmak" : "Qwerty");
-
     rotate_canvas(canvas_top);
 }
 
@@ -240,11 +229,6 @@ static void mod_render_cb(struct k_work *work) {
 }
 static K_WORK_DEFINE(mod_render_work, mod_render_cb);
 
-static void layout_render_cb(struct k_work *work) {
-    render_layout_canvas(&widget_state);
-}
-static K_WORK_DEFINE(layout_render_work, layout_render_cb);
-
 static inline void display_submit(struct k_work *work) {
     if (zmk_display_is_initialized()) {
         k_work_submit_to_queue(zmk_display_work_q(), work);
@@ -253,19 +237,13 @@ static inline void display_submit(struct k_work *work) {
 
 /* ── Public modifier update (called by modifier_sync_peripheral) ─────── */
 
-/* Bits 0-3: R-mod nibble. Bit 4: Mac/Win glyph-order flag. Bit 5: Qwerty/
- * Colemak flag. Both forwarded by central, which has no local keymap/layer
- * state of its own to derive either from. */
+/* Bits 0-3: R-mod nibble. Bit 4: Mac/Win glyph-order flag, forwarded by
+ * central, which has no local keymap/layer state of its own to derive it
+ * from. */
 void blecorne_peripheral_update_mods(uint8_t payload) {
     widget_state.r_mods = payload & 0x0F;
     widget_state.is_mac = !!(payload & BIT(4));
     display_submit(&mod_render_work);
-
-    bool is_colemak = !!(payload & BIT(5));
-    if (is_colemak != widget_state.is_colemak) {
-        widget_state.is_colemak = is_colemak;
-        display_submit(&layout_render_work);
-    }
 }
 
 /* ── Event listeners ─────────────────────────────────────────────────── */
@@ -327,14 +305,13 @@ int blecorne_peripheral_widget_init(struct blecorne_peripheral_widget *widget,
     widget_state.battery_level = zmk_battery_state_of_charge();
     widget_state.connected     = zmk_split_bt_peripheral_is_connected();
     widget_state.is_mac        = false;
-    widget_state.is_colemak    = false;
     widget_state.r_mods        = 0;
 
     k_timer_start(&flash_timer, K_MSEC(500), K_MSEC(500));
 
     render_status_canvas(&widget_state);
     render_mod_canvas(&widget_state);
-    render_layout_canvas(&widget_state);
+    render_layout_canvas();
 
     return 0;
 }
