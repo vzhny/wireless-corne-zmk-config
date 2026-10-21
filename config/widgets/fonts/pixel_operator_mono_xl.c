@@ -4,11 +4,7 @@
  * Opts: --size 24 --bpp 1 --format lvgl --no-compress --font PixelOperatorMono.ttf -r 0x20-0x7F --lv-font-name pixel_operator_mono_xl -o config/widgets/fonts/pixel_operator_mono_xl.c
  ******************************************************************************/
 
-#ifdef LV_LVGL_H_INCLUDE_SIMPLE
-#include "lvgl.h"
-#else
-#include "lvgl/lvgl.h"
-#endif
+#include <lvgl.h>
 
 #ifndef PIXEL_OPERATOR_MONO_XL
 #define PIXEL_OPERATOR_MONO_XL 1

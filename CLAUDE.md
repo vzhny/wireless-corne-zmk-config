@@ -130,6 +130,7 @@ black/white). This Sharp Memory LCD is strictly monochrome: a bpp=4 font's antia
 edge pixels get thresholded and look mushy; bpp=1 stays crisp. Both source `.ttf` files
 live at the repo root (`PixelOperatorMono.ttf`, `JetBrainsMonoNLNerdFont-Regular.ttf`);
 each generated `.c` has its exact `Opts:` command line in its header comment.
+**After generating, replace `lv_font_conv`'s `#ifdef LV_LVGL_H_INCLUDE_SIMPLE ... #include "lvgl/lvgl.h"` block with a plain `#include <lvgl.h>`** - ZMK's include paths have no `lvgl/lvgl.h`, so the raw output fails the CI build.
 
 | Font | Source | Size | Used for |
 |------|--------|------|----------|
