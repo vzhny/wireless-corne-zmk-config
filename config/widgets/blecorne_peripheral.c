@@ -176,9 +176,16 @@ static int split_event_cb(const zmk_event_t *eh) {
 
 /* ── Flash work item (submitted by timer, runs on system workq) ───────── */
 
+/* Only redraw while something blinks - see blecorne_central.c. */
+static bool needs_blink(void) {
+    return !widget_state.connected || widget_state.battery_level <= 5;
+}
+
 static void flash_work_cb(struct k_work *work) {
     flash_on = !flash_on;
-    display_submit(&status_render_work);
+    if (needs_blink()) {
+        display_submit(&status_render_work);
+    }
 }
 
 ZMK_LISTENER(peri_battery, battery_event_cb);

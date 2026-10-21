@@ -236,9 +236,18 @@ static inline void display_submit(struct k_work *work) {
 
 /* ── Flash work item (submitted by timer, runs on system workq) ───────── */
 
+/* Only redraw while something actually blinks - otherwise the toggle changes
+ * nothing visible and a redraw just costs CPU, SPI and battery twice a
+ * second. Events that start or stop a blink redraw on their own. */
+static bool needs_blink(void) {
+    return !bt_connected || (!widget_state.charging && widget_state.battery_level <= 5);
+}
+
 static void flash_work_cb(struct k_work *work) {
     flash_on = !flash_on;
-    display_submit(&status_render_work);
+    if (needs_blink()) {
+        display_submit(&status_render_work);
+    }
 }
 
 /* ── Event listeners ─────────────────────────────────────────────────── */

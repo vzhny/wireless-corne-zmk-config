@@ -160,8 +160,11 @@ only an approximation of real HID state. Don't re-add without a reason that outw
 that radio/battery cost.
 
 **Flash state** (`flash_on`, both widgets): one 500ms timer, always running, toggles
-`flash_on` and redraws the status strip. Drives the BT/connection icon's blink while
-searching and the battery-empty blink at <=5%.
+`flash_on`. It submits a status redraw **only while `needs_blink()`** - central: BT
+searching, or battery <=5% and not charging; peripheral: split link searching, or
+battery <=5%. Otherwise the tick changes nothing visible and a redraw would just burn
+CPU/SPI/battery twice a second; the events that start or stop a blink redraw on their
+own. A new blinking element must be added to `needs_blink()` too, or it won't animate.
 
 The BT/connection icon is **always drawn, never absent** - `active = connected ||
 flash_on`, so while searching it blinks rather than vanishing permanently.
