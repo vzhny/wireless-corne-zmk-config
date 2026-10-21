@@ -271,30 +271,29 @@ BT-profile equivalent), just the right-aligned `%`.
 `hml` (left) / `hmr` (right): balanced flavor, 200 ms tapping-term, 175 ms quick-tap,
 150 ms require-prior-idle, `hold-trigger-key-positions` (opposite hand + thumbs).
 
-**No `hold-trigger-on-release`** (removed from both). That flag deferred the tap/hold
-decision until the hold-tap key itself was released, instead of resolving via the
-tapping-term timeout or an opposite-hand `hold-trigger-key-positions` press - confirmed
-on real hardware this made the display only light up a held modifier *after* releasing
-it, and made holding multiple homerow mods resolve one at a time instead of
-simultaneously.
+**`hold-trigger-on-release` is on** (both). Without it, pressing *any* key not in
+`hold-trigger-key-positions` - i.e. any same-hand key - resolves the hold-tap as a
+**tap immediately**, so same-hand combos like Ctrl(A)+F printed "af" no matter how long
+A was held short of the tapping term. With it, a same-hand press defers the decision
+until that key is released: F released while A is still held → hold (Ctrl+F); A
+released first (a normal "af" roll) → tap.
 
-That fix was necessary but not sufficient - ZMK's `"balanced"` flavor itself only
-resolves a hold-tap key in one of two ways: the tapping-term timeout elapses while it's
-held alone, or another ("interrupting") key is pressed *and released* while it's still
-held. Critically, resolution happens on the interrupting key's **release**, not its
-press, and ZMK queues both keys' events internally until that decision is made - so
-neither reaches the display (or HID) until then. This is inherent to `"balanced"`, not
-something `hold-trigger-on-release` caused, and it's still true after that fix.
+It was briefly removed because the display then lit a held modifier only after
+release - a display-side problem that no longer exists (the modifier cells are gone,
+see Fonts). Don't remove it again for display reasons.
+
+`"balanced"` itself resolves a hold-tap only when the tapping term elapses with the key
+held alone, or when an interrupting key is pressed *and released* while it is held; ZMK
+queues both keys' events until then.
 
 `thm` (thumb shift/key, tap = key, hold = modifier, tap-then-hold = repeat key): also
 `"balanced"`, 200 ms tapping-term, 175 ms quick-tap. Briefly tried `"hold-preferred"`
 here to get faster resolution, but confirmed on hardware it didn't meaningfully help and
 made this key behave differently from `hml`/`hmr` for no real benefit - reverted.
 **Don't change `hml`/`hmr`/`thm`'s flavor or other tap/hold timing without the user
-asking** - these are tuned to how the user actually types (tapping-term last set to
-200 ms across all three, per explicit request) and are deliberately out of scope for
-the "modifiers don't show in real time" problem; solve that on the display side (see
-below) instead of by changing what these keys actually do.
+asking** - these are tuned to how the user actually types (tapping-term 200 ms across
+all three, kept at 200 when `hold-trigger-on-release` was re-added 2026-10-20 - lower it
+only if same-hand mods still feel slow after that).
 
 ### Caps Word
 
