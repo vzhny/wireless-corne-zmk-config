@@ -3,8 +3,7 @@
 #include <lvgl.h>
 
 /* Converted from JetBrainsMonoNLNerdFont-Regular.ttf via lv_font_conv
- * (--bpp 1 --size 18) - same source as icon_font.h, a separate conversion
- * sized for the status row (canvas_bot) rather than the modifier cells.
+ * (--bpp 1 --size 18), sized for the status row (canvas_bot).
  * The wifi/connection icon has its own font instead - see
  * status_icon_font_wifi.h. */
 extern const lv_font_t status_icon_font;

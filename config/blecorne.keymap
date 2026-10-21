@@ -110,8 +110,7 @@
          * Win/Mac split: base profile layer (0/1 Win, 2 Mac) stays active
          * underneath any stacked momentary layer (NUM/NAV/SYM/FUNC/ADMIN), so
          * restricting by base layer here still fires correctly while those are
-         * held - see is_mac note in blecorne_central.h/.c for why this can't
-         * just read highest-active-layer instead. */
+         * held. */
 
         combo_undo {
             timeout-ms = <40>;
@@ -202,10 +201,7 @@
          * of its own (identical to being on layer 0 alone). Exists only so
          * "return to Qwerty Win" can be an explicit &tog target symmetric with
          * the other profile below, instead of relying on toggling it off by
-         * hand. is_mac on the display keys off the specific profile layer
-         * that is active (zmk_keymap_layer_active), not "highest active
-         * layer", so this layer needs no real bindings to work correctly -
-         * see blecorne_central.c / modifier_sync_central.c.
+         * hand.
          * Activated via &tog 1 from ADMIN. */
 
         qwerty_win_profile_layer {

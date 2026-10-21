@@ -57,8 +57,6 @@ p.sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; max-width: 720px
 .controls label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .controls select, .controls input[type=range] { flex: 1; }
 .controls input[type=checkbox] { width: 16px; height: 16px; }
-.mods-row { display: flex; flex-wrap: wrap; gap: 10px; }
-.mods-row label { flex: none; gap: 4px; }
 .panel {
   display: flex;
   flex-direction: column;
@@ -143,8 +141,9 @@ canvas.actual-canvas {
   Direct 1:1 recreation of what <code>config/widgets/blecorne_central.c</code> /
   <code>blecorne_peripheral.c</code> draw onto the physical 68&times;160px nice!view buffer,
   overlaid at true scale on the actual module photo (<code>niceview_pinout.png</code>).
-  Reflects git HEAD exactly: status strip renders at the physical top, layer name at the
-  physical bottom (no layer circles - removed, they were too small to read reliably).
+  Reflects git HEAD exactly: status strip renders at the physical top, the layer name
+  (central only) in the middle strip, bottom strip blank. No modifier cells - removed to
+  cut a BLE write plus a redraw on every keystroke.
   Text and icons render with the actual embedded fonts (<code>PixelOperatorMono.ttf</code>,
   <code>JetBrainsMonoNLNerdFont-Regular.ttf</code>) converted into
   <code>config/widgets/fonts/*.c</code> via <code>lv_font_conv</code> - not an
@@ -175,22 +174,14 @@ canvas.actual-canvas {
       <label>Active layer</label>
       <select id="c_layer">
         <option value="0">0 - Qwerty (Win)</option>
-        <option value="1">1 - Qwerty (Mac)</option>
-        <option value="2">2 - Num</option>
-        <option value="3">3 - Nav</option>
-        <option value="4">4 - Sym</option>
-        <option value="5">5 - Func</option>
-        <option value="6">6 - Admin</option>
+        <option value="1">1 - Qwerty (Win profile)</option>
+        <option value="2">2 - Qwerty (Mac)</option>
+        <option value="3">3 - Num</option>
+        <option value="4">4 - Nav</option>
+        <option value="5">5 - Sym</option>
+        <option value="6">6 - Func</option>
+        <option value="7">7 - Admin</option>
       </select>
-    </div>
-    <div class="group">
-      <label>Modifiers (left hand)</label>
-      <div class="mods-row">
-        <label>Shift <input type="checkbox" id="c_mod_shift"></label>
-        <label>Ctrl <input type="checkbox" id="c_mod_ctrl" checked></label>
-        <label>Gui <input type="checkbox" id="c_mod_gui"></label>
-        <label>Alt <input type="checkbox" id="c_mod_alt"></label>
-      </div>
     </div>
   </div>
 
@@ -227,36 +218,24 @@ canvas.actual-canvas {
       <label>Battery <span id="p_batt_val">75%</span></label>
       <input type="range" id="p_battery" min="0" max="100" value="75">
     </div>
-    <div class="group">
-      <label>Mac glyph order <input type="checkbox" id="p_is_mac"></label>
-    </div>
-    <div class="group">
-      <label>Modifiers (right hand, synced from central)</label>
-      <div class="mods-row">
-        <label>RShift <input type="checkbox" id="p_mod_shift" checked></label>
-        <label>RCtrl <input type="checkbox" id="p_mod_ctrl"></label>
-        <label>RGui <input type="checkbox" id="p_mod_gui" checked></label>
-        <label>RAlt <input type="checkbox" id="p_mod_alt"></label>
-      </div>
-    </div>
   </div>
 </div>
 
 <div class="note">
   <strong>Pixel mapping.</strong> Derived directly from LVGL's actual <code>rotate270_l8</code>
   source plus this project's widget offsets: each of the three 68&times;68 canvases
-  (status/mods/layer) maps to the final 68w&times;160h physical buffer via
+  (status/layer/blank) maps to the final 68w&times;160h physical buffer via
   <code>physical_col = x</code>, <code>physical_row = y + BASE</code>, where BASE is a
   fixed function of the widget's <code>x</code> offset (<code>BASE = 92 - x</code> for
   this project's rotation/geometry) - <code>x=-44</code> &rarr; <code>BASE=136</code>
   (only 24px of framebuffer remain there before the 160px buffer ends, so only rows
   0-23 of that canvas are visible, rest silently clipped), <code>x=24</code> &rarr;
-  <code>BASE=68</code> (modifier canvas, middle, full 68px available), <code>x=92</code>
+  <code>BASE=68</code> (layer canvas, middle, full 68px available), <code>x=92</code>
   (TOP_RIGHT) &rarr; <code>BASE=0</code> (full 68px available, physical top). Status now
   uses the <code>x=92</code>/top slot (only needs its content in the first 24 rows,
-  rest stays blank/background - harmless); layer name uses the <code>x=-44</code>/bottom
-  slot, which really is hardware-truncated to 24 rows, hence its text sitting at
-  <code>y=5</code> instead of vertically centered. This closed form already accounts for
+  rest stays blank/background - harmless); the layer name uses the <code>x=24</code>/middle
+  slot, centered at <code>y=24</code>; the <code>x=-44</code>/bottom slot is
+  hardware-truncated to 24 rows and is left blank. This closed form already accounts for
   both the per-canvas <code>rotate_canvas()</code> 270&deg; rotation and the display's
   own final 270&deg; rotation - no separate rotation simulation needed.
 </div>
@@ -265,16 +244,9 @@ canvas.actual-canvas {
 // Real icon glyphs now (JetBrainsMonoNLNerdFont, subsetted, embedded as
 // @font-face 'IconFont' below) - Unicode PUA codepoints from Nerd Fonts'
 // Material Design Icons + Font Awesome sets, same codepoints used in
-// config/widgets/fonts/icon_font.h. No more hand-typed 0/1 bitmap arrays.
+// config/widgets/fonts/status_icon_font.h. No more hand-typed 0/1 bitmap arrays.
 const ICONS = {
-  // Modifier row (icon_font.h equivalent, drawn at ICON_SIZE_MOD)
-  shift: '\u{F005D}', // md-arrow_up - thin-stroked, matches the mod text's
-                       // weight, and distinct from ICON_CTRL's caret shape
-  ctrl:  '\u{F0634}', // md-apple_keyboard_control
-  cmd:   '\u{F0633}', // md-apple_keyboard_command
-  opt:   '\u{F0635}', // md-apple_keyboard_option
-  // Status row (status_icon_font.h equivalent, drawn at ICON_SIZE_STATUS -
-  // icon_font's size clipped/overflowed this much shorter strip)
+  // Status row (status_icon_font.h equivalent, drawn at ICON_SIZE_STATUS)
   bt:      '\u{F294}',  // fa-bluetooth_b
   wifi:    '\u{F1EB}',  // fa-wifi
   battFull: '\u{F240}', // fa-battery_full        76-100%
@@ -284,7 +256,6 @@ const ICONS = {
   battEmpty:'\u{F244}', // fa-battery_empty        1-5%, blinks
   bolt:     '\u{F0E7}', // fa-flash (this Nerd Font's name for Font Awesome's bolt glyph) - charging, replaces battery icon entirely
 };
-const ICON_SIZE_MOD = 24;
 const ICON_SIZE_STATUS = 18;
 // Wifi (peripheral's connection icon) is drawn smaller than the other status
 // icons - it's the widest glyph in status_icon_font, and reads cleaner a
@@ -299,7 +270,12 @@ const BASE_TOP = 0, BASE_MID = 68, BASE_BOT = 136;
 
 // Order must match blecorne.keymap's layer indices - see its
 // conditional_layers comment for why Admin has to stay numerically above Func.
-const LAYER_NAMES = ["Base","Base","Num","Nav","Sym","Func","Admin"];
+// Mockup-side y for the layer name: rasterize() places glyphs by the
+// browser's 'top' baseline, not LVGL's line_height/base_line box, so this is
+// tuned to land the ink on rows 27-40 - the same rows firmware's y=24 gives.
+const LAYER_TEXT_Y = 19;
+
+const LAYER_NAMES = ["Base","Base","Base","Num","Nav","Sym","Func","Admin"];
 
 // LVGL_BACKGROUND/FOREGROUND per config/widgets/util.h - plain black ink on
 // white background.
@@ -349,8 +325,8 @@ function rasterize(text, fontPx, fontFamily, w, align) {
 }
 
 // Blends a rasterized glyph into buf the way LVGL's L8 recolor path does for
-// a bpp=1 font: the real firmware fonts (pixel_operator_mono.c, icon_font.c,
-// status_icon_font.c) were converted at --bpp 1, meaning every glyph pixel
+// a bpp=1 font: the real firmware fonts (pixel_operator_mono_*.c,
+// status_icon_font*.c) were converted at --bpp 1, meaning every glyph pixel
 // in the actual font data is strictly on or off - there is no antialiasing
 // to blend. The browser's canvas text renderer DOES antialias its output
 // though, so without a hard threshold here the mockup shows soft/fuzzy gray
@@ -373,24 +349,6 @@ function blendGlyph(buf, x, y, img, opa, color) {
   }
 }
 
-// Rasterizes a 1px-bordered rounded rect (optionally filled), same
-// threshold-to-binary treatment as text/icons - matches draw_mod_box() in
-// blecorne_central.c/blecorne_peripheral.c (radius 6, border always on,
-// fill only when `active`/"pressed").
-function rasterizeRoundRect(w, h, radius, filled, strokeWidth) {
-  textMeasureCanvas.width = w;
-  textMeasureCanvas.height = h;
-  textCtx.clearRect(0, 0, w, h);
-  textCtx.fillStyle = '#fff';
-  textCtx.strokeStyle = '#fff';
-  textCtx.lineWidth = strokeWidth;
-  textCtx.beginPath();
-  textCtx.roundRect(strokeWidth / 2, strokeWidth / 2, w - strokeWidth, h - strokeWidth, radius);
-  if (filled) textCtx.fill();
-  textCtx.stroke();
-  return textCtx.getImageData(0, 0, w, h);
-}
-
 // Discrete battery level -> Font Awesome battery glyph (see battery_icon()
 // in blecorne_central.c/blecorne_peripheral.c). <=5% and charging are
 // handled by the caller, not here.
@@ -408,7 +366,9 @@ function profileLabel(profile) {
   return PROFILE_ALIASES[profile] ?? `B${profile}`;
 }
 
-// All text: real PixelOperatorMono font (config/widgets/fonts/pixel_operator_mono.c),
+// All text: real PixelOperatorMono font (config/widgets/fonts/pixel_operator_mono_*.c),
+// fontPx = the lv_font_conv --size (browser px and --size give the same 0.5em
+// advance: 20 -> 10px/char, 24 -> 12px/char),
 // bpp=1 pixel font, no antialiasing to threshold/blur on this monochrome
 // display - always foreground now that layer-number circles (the only thing
 // that needed background-color "knockout" text) are gone.
@@ -417,7 +377,7 @@ function drawText(buf, x, y, w, text, fontPx, align) {
   blendGlyph(buf, x, y, img, 1.0);
 }
 
-// Real icon_font/status_icon_font glyph, positioned by *measured ink*
+// Real status_icon_font glyph, positioned by *measured ink*
 // (canvas TextMetrics actualBoundingBox{Left,Right,Ascent,Descent}) rather
 // than the font's advance width/em-box - the same advance-vs-ink mismatch
 // that made LVGL's LV_TEXT_ALIGN_CENTER mis-center icons in firmware (see
@@ -460,29 +420,6 @@ function drawIcon(buf, icon, active, align, size, edgeInset, topPad) {
   blendGlyph(buf, 0, 0, img, active ? 1.0 : (0x40 / 0xFF));
 }
 
-// Modifier cell: 1px rounded-border box (always visible) + icon/text inside,
-// inverted (background color) when "active"/pressed instead of the old
-// opacity fade - matches draw_mod_box()/draw_mod_icon()/draw_mod_text() in
-// blecorne_central.c/blecorne_peripheral.c.
-const MOD_BOX_W = 30, MOD_BOX_H = 26;
-
-function drawModBox(buf, x, y, active) {
-  const img = rasterizeRoundRect(MOD_BOX_W, MOD_BOX_H, 6, active, 1);
-  blendGlyph(buf, x, y, img, 1.0);
-}
-
-function drawModIcon(buf, x, y, icon, active) {
-  drawModBox(buf, x, y, active);
-  const img = rasterizeIconInk(icon, ICON_SIZE_MOD, MOD_BOX_W, MOD_BOX_H, 'center');
-  blendGlyph(buf, x, y, img, 1.0, active ? BG : FG);
-}
-
-function drawModText(buf, x, y, text, active) {
-  drawModBox(buf, x, y, active);
-  const img = rasterize(text, 13, 'PixelOperatorMono', MOD_BOX_W, 'center');
-  blendGlyph(buf, x, y + 6, img, 1.0, active ? BG : FG);
-}
-
 // ---- Composite a canvas-local buffer into the final physical 68x160 buffer ----
 // physical_col = x_src, physical_row = y_src + base (canvas_bot clipped to y_src<=23)
 function compositeCanvas(physBuf, localBuf, base, maxYSrc) {
@@ -501,8 +438,8 @@ function renderCentral(state) {
   const physBuf = new Uint8ClampedArray(PHYS_W * PHYS_H).fill(BG);
 
   // canvas_bot: status - NOT hardware-truncated, full 68px budget available.
-  // Two rows: icons on row 1 (y=0), text on row 2 (y=20, fontPx 16 - same
-  // size as the layer name) directly under their own icon - BT profile
+  // Two rows: icons on row 1 (y=0), text on row 2 (y=20, fontPx 20 -
+  // pixel_operator_mono_large) directly under their own icon - BT profile
   // left-aligned, battery/bolt/% right-aligned. "BT n" shortened to "B n"
   // (see blecorne_central.c) - at this text size "BT 4"+"100%" together
   // don't fit in 68px with any gap at all, let alone a comfortable one.
@@ -528,55 +465,33 @@ function renderCentral(state) {
     } else {
       drawIcon(buf, batteryIcon(state.battery), true, 'right', undefined, 8);
     }
-    drawText(buf, 28, 20, 40, `${state.battery}%`, 16, 'right');
+    drawText(buf, 28, 20, 40, `${state.battery}%`, 20, 'right');
     // Blank while searching - the flashing BT glyph above is the only "still
     // pairing" indicator, no "Connecting..." text.
     if (state.btConnected) {
-      drawText(buf, 0, 20, 22, profileLabel(state.btProfile), 16, 'left');
+      drawText(buf, 0, 20, 22, profileLabel(state.btProfile), 20, 'left');
     }
     compositeCanvas(physBuf, buf, BASE_TOP);
   }
 
-  // canvas_mid: modifiers - two rows of bordered cells (MOD_BOX_W x
-  // MOD_BOX_H, see drawModBox), Shift+Ctrl on row 1, GUI+Alt on row 2.
-  // Mac: all four are icon_font glyphs. Windows: only Shift stays an icon -
-  // Ctrl/GUI/Alt become plain text ("Ctl"/"Win"/"Alt" - "Ctrl" wrapped onto
-  // a second line at this box/font size) since real Windows keyboards print
-  // those as text, not a symbol (unlike Mac's ⌘/⌥/⌃).
-  // "Active"/pressed inverts the cell (filled box, inverted content color)
-  // instead of the old opacity fade - see drawModIcon/drawModText.
-  // Section-boundary rules at y=0/y=67: this canvas uses its full 68px
-  // budget (no hardware truncation), so these land exactly on the true
-  // physical boundary with the status strip above and layer strip below.
+  // canvas_mid: layer name (pixel_operator_mono_xl, size 24, 12px/char),
+  // centered in the full 68px canvas - firmware draws at y=24 so the 14px
+  // cap-height ink spans rows 27-40. Layers 0-2 (Qwerty Win/Win-profile/Mac)
+  // all show "Base". Section rules at y=0/y=67 land exactly on the physical
+  // boundary with the status strip above and the blank strip below.
   {
     const buf = makeCanvasBuf();
     clearCanvas(buf);
     fillRect(buf, 0, 0, CANVAS_SIZE, 1, FG);
     fillRect(buf, 0, CANVAS_SIZE - 1, CANVAS_SIZE, 1, FG);
-    const isMac = (state.activeLayer === 1);
-    const x0 = 4, x1 = 36, y0 = 6, y1 = 38;
-    drawModIcon(buf, x0, y0, ICONS.shift, state.mods.shift);
-    if (isMac) {
-      drawModIcon(buf, x1, y0, ICONS.ctrl, state.mods.ctrl);
-      drawModIcon(buf, x0, y1, ICONS.cmd, state.mods.gui);
-      drawModIcon(buf, x1, y1, ICONS.opt, state.mods.alt);
-    } else {
-      drawModText(buf, x1, y0, 'Ctl', state.mods.ctrl);
-      drawModText(buf, x0, y1, 'Win', state.mods.gui);
-      drawModText(buf, x1, y1, 'Alt', state.mods.alt);
-    }
+    drawText(buf, 0, LAYER_TEXT_Y, 68, LAYER_NAMES[state.activeLayer] ?? '???', 24, 'center');
     compositeCanvas(physBuf, buf, BASE_MID);
   }
 
-  // canvas_top: layer name, centered. Layers 0-1 (Qwerty Win/Mac) both show
-  // "Base" - Win/Mac is shown by the modifier row's icons-vs-text instead.
-  // This slot is hardware-truncated to 24 visible rows, so text sits at
-  // y=5, not vertically centered in the full canvas.
+  // canvas_top: blank (hardware-truncated to 24 rows).
   {
     const buf = makeCanvasBuf();
     clearCanvas(buf);
-    const active = state.activeLayer;
-    drawText(buf, 0, 5, 68, LAYER_NAMES[active] ?? '???', 16, 'center');
     compositeCanvas(physBuf, buf, BASE_BOT, 23);
   }
 
@@ -608,34 +523,19 @@ function renderPeripheral(state) {
     }
     // % text stays flush with the canvas edge (x=28,w=40 -> ends at 68),
     // matching central's battery % position exactly.
-    drawText(buf, 28, 20, 40, `${state.battery}%`, 16, 'right');
+    drawText(buf, 28, 20, 40, `${state.battery}%`, 20, 'right');
     compositeCanvas(physBuf, buf, BASE_TOP);
   }
 
-  // canvas_mid: modifiers - same bordered-cell layout as the left half (see
-  // renderCentral for the full rationale and section rules)
+  // canvas_mid: section rules only - this half has no layer state to show.
+  // canvas_top: blank. Both drawn once at init in firmware.
   {
     const buf = makeCanvasBuf();
     clearCanvas(buf);
     fillRect(buf, 0, 0, CANVAS_SIZE, 1, FG);
     fillRect(buf, 0, CANVAS_SIZE - 1, CANVAS_SIZE, 1, FG);
-    const x0 = 4, x1 = 36, y0 = 6, y1 = 38;
-    drawModIcon(buf, x0, y0, ICONS.shift, state.mods.shift);
-    if (state.isMac) {
-      drawModIcon(buf, x1, y0, ICONS.ctrl, state.mods.ctrl);
-      drawModIcon(buf, x0, y1, ICONS.cmd, state.mods.gui);
-      drawModIcon(buf, x1, y1, ICONS.opt, state.mods.alt);
-    } else {
-      drawModText(buf, x1, y0, 'Ctl', state.mods.ctrl);
-      drawModText(buf, x0, y1, 'Win', state.mods.gui);
-      drawModText(buf, x1, y1, 'Alt', state.mods.alt);
-    }
     compositeCanvas(physBuf, buf, BASE_MID);
   }
-
-  // canvas_top: unused - this half has only one letter-layout (Qwerty) to
-  // show, and Mac/Win is already shown by the modifier row's icons-vs-text,
-  // so there's nothing left to put here. Left blank.
   {
     const buf = makeCanvasBuf();
     clearCanvas(buf);
@@ -666,12 +566,6 @@ function readCentralState() {
     battery: parseInt(document.getElementById('c_battery').value, 10),
     charging: document.getElementById('c_charging').checked,
     activeLayer: parseInt(document.getElementById('c_layer').value, 10),
-    mods: {
-      shift: document.getElementById('c_mod_shift').checked,
-      ctrl: document.getElementById('c_mod_ctrl').checked,
-      gui: document.getElementById('c_mod_gui').checked,
-      alt: document.getElementById('c_mod_alt').checked,
-    },
   };
 }
 
@@ -680,13 +574,6 @@ function readPeripheralState() {
     connected: document.getElementById('p_connected').checked,
     flashOn: true, // static preview - real hardware blinks this every 500ms
     battery: parseInt(document.getElementById('p_battery').value, 10),
-    isMac: document.getElementById('p_is_mac').checked,
-    mods: {
-      shift: document.getElementById('p_mod_shift').checked,
-      ctrl: document.getElementById('p_mod_ctrl').checked,
-      gui: document.getElementById('p_mod_gui').checked,
-      alt: document.getElementById('p_mod_alt').checked,
-    },
   };
 }
 

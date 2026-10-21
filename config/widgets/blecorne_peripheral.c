@@ -9,9 +9,7 @@
 #include <zmk/split/bluetooth/peripheral.h>
 
 #include "util.h"
-#include "fonts/pixel_operator_mono.h"
 #include "fonts/pixel_operator_mono_large.h"
-#include "fonts/icon_font.h"
 #include "fonts/status_icon_font.h"
 #include "fonts/status_icon_font_wifi.h"
 #include "blecorne_peripheral.h"
@@ -23,8 +21,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 struct peripheral_state {
     uint8_t battery_level;
     bool    connected;
-    bool    is_mac;     /* Mac vs Win glyph order, forwarded by central over the sync GATT char */
-    uint8_t r_mods;     /* R-mod nibble: bit0=RCtrl, bit1=RShift, bit2=RAlt, bit3=RGUI */
 };
 
 static struct peripheral_state widget_state;
@@ -33,7 +29,7 @@ static struct peripheral_state widget_state;
  * See blecorne_central.c's canvas comment for how these x offsets map to
  * physical display strips. */
 static lv_obj_t *canvas_top;    /* x=-44 -> bottom strip (unused, blank) */
-static lv_obj_t *canvas_mid;    /* x=24  -> middle strip (mods)        */
+static lv_obj_t *canvas_mid;    /* x=24  -> middle strip (rules only)  */
 static lv_obj_t *canvas_bot;    /* x=92 (TOP_RIGHT) -> top strip (status) */
 
 static uint8_t cbuf_top[CANVAS_BUF_SIZE];
@@ -84,43 +80,6 @@ static void draw_wifi_icon(lv_obj_t *canvas, int x, int y, int w, bool active,
     canvas_draw_text(canvas, x, y, w, &dsc, ICON_WIFI_SMALL);
 }
 
-/* Modifier cell (border box, invert-on-press) - see blecorne_central.c. */
-
-#define MOD_BOX_W 30
-#define MOD_BOX_H 26
-
-static void draw_mod_box(lv_obj_t *canvas, int x, int y, bool active) {
-    lv_draw_rect_dsc_t dsc;
-    lv_draw_rect_dsc_init(&dsc);
-    dsc.radius       = 6;
-    dsc.border_width = 1;
-    dsc.border_color = LVGL_FOREGROUND;
-    dsc.border_opa   = LV_OPA_COVER;
-    dsc.bg_color     = LVGL_FOREGROUND;
-    dsc.bg_opa       = active ? LV_OPA_COVER : LV_OPA_TRANSP;
-    canvas_draw_rect(canvas, x, y, MOD_BOX_W, MOD_BOX_H, &dsc);
-}
-
-/* icon_w = glyph's real ink width (ICON_*_W), icon_ofs_x = left bearing
- * (ICON_*_OFS_X) - see blecorne_central.c's draw_mod_icon() comment. */
-static void draw_mod_icon(lv_obj_t *canvas, int x, int y, const char *icon, int icon_w,
-                          int icon_ofs_x, bool active) {
-    draw_mod_box(canvas, x, y, active);
-    lv_draw_label_dsc_t dsc;
-    init_label_dsc(&dsc, active ? LVGL_BACKGROUND : LVGL_FOREGROUND, &icon_font);
-    dsc.align = LV_TEXT_ALIGN_LEFT;
-    int content_x = x + (MOD_BOX_W - icon_w) / 2 - icon_ofs_x;
-    canvas_draw_text(canvas, content_x, y + 3, MOD_BOX_W, &dsc, icon);
-}
-
-static void draw_mod_text(lv_obj_t *canvas, int x, int y, const char *text, bool active) {
-    draw_mod_box(canvas, x, y, active);
-    lv_draw_label_dsc_t dsc;
-    init_label_dsc(&dsc, active ? LVGL_BACKGROUND : LVGL_FOREGROUND, &pixel_operator_mono);
-    dsc.align = LV_TEXT_ALIGN_CENTER;
-    canvas_draw_text(canvas, x, y + 6, MOD_BOX_W, &dsc, text);
-}
-
 /* Discrete battery level -> Font Awesome battery glyph (see blecorne_central.c). */
 static const char *battery_icon(uint8_t level) {
     if (level > 75) return ICON_BATTERY_FULL;
@@ -168,51 +127,18 @@ static void render_status_canvas(struct peripheral_state *state) {
     rotate_canvas(canvas_bot);
 }
 
-/* canvas_mid (physical middle strip, 68 px)
- *
- * R-mod nibble bit mapping: bit0=RCtrl, bit1=RShift, bit2=RAlt, bit3=RGUI
- *
- * Same bordered-cell layout and OS-conditional icon-vs-text arrangement as
- * the left half - see blecorne_central.c's render_mod_canvas.
- */
-static void render_mod_canvas(struct peripheral_state *state) {
+/* canvas_mid: just the 1px section-separator rules at y=0 and y=67 (see
+ * blecorne_central.c's render_layer_canvas). This half has no layer state
+ * to show, so the rest stays blank. canvas_top (24px visible) is blank too.
+ * Both are drawn once at init and never redrawn. */
+static void render_static_canvases(void) {
     clear_canvas(canvas_mid);
-
-    /* Section separators - see blecorne_central.c's render_mod_canvas. */
     lv_draw_rect_dsc_t rule_dsc;
     init_rect_dsc(&rule_dsc, LVGL_FOREGROUND);
     canvas_draw_rect(canvas_mid, 0, 0, CANVAS_SIZE, 1, &rule_dsc);
     canvas_draw_rect(canvas_mid, 0, CANVAS_SIZE - 1, CANVAS_SIZE, 1, &rule_dsc);
-
-    bool is_mac = state->is_mac;
-    uint8_t r = state->r_mods;
-
-    bool shift_active = !!(r & BIT(1));
-    bool ctrl_active  = !!(r & BIT(0));
-    bool gui_active   = !!(r & BIT(3));
-    bool alt_active   = !!(r & BIT(2));
-
-    int x0 = 4, x1 = 36, y0 = 6, y1 = 38;
-
-    draw_mod_icon(canvas_mid, x0, y0, ICON_SHIFT, ICON_SHIFT_W, ICON_SHIFT_OFS_X, shift_active);
-    if (is_mac) {
-        draw_mod_icon(canvas_mid, x1, y0, ICON_CTRL, ICON_CTRL_W, ICON_CTRL_OFS_X, ctrl_active);
-        draw_mod_icon(canvas_mid, x0, y1, ICON_CMD,  ICON_CMD_W,  ICON_CMD_OFS_X,  gui_active);
-        draw_mod_icon(canvas_mid, x1, y1, ICON_OPT,  ICON_OPT_W,  ICON_OPT_OFS_X,  alt_active);
-    } else {
-        draw_mod_text(canvas_mid, x1, y0, "Ctl", ctrl_active);
-        draw_mod_text(canvas_mid, x0, y1, "Win",  gui_active);
-        draw_mod_text(canvas_mid, x1, y1, "Alt",  alt_active);
-    }
-
     rotate_canvas(canvas_mid);
-}
 
-/* canvas_top (24 px visible, see canvas comment above) - unused: this half
- * has only one letter-layout (Qwerty) to show, and Mac/Win is already shown
- * by the modifier row's icons-vs-text, so there's nothing left to put here.
- * Cleared once at init and never redrawn. */
-static void render_layout_canvas(void) {
     clear_canvas(canvas_top);
     rotate_canvas(canvas_top);
 }
@@ -224,26 +150,10 @@ static void status_render_cb(struct k_work *work) {
 }
 static K_WORK_DEFINE(status_render_work, status_render_cb);
 
-static void mod_render_cb(struct k_work *work) {
-    render_mod_canvas(&widget_state);
-}
-static K_WORK_DEFINE(mod_render_work, mod_render_cb);
-
 static inline void display_submit(struct k_work *work) {
     if (zmk_display_is_initialized()) {
         k_work_submit_to_queue(zmk_display_work_q(), work);
     }
-}
-
-/* ── Public modifier update (called by modifier_sync_peripheral) ─────── */
-
-/* Bits 0-3: R-mod nibble. Bit 4: Mac/Win glyph-order flag, forwarded by
- * central, which has no local keymap/layer state of its own to derive it
- * from. */
-void blecorne_peripheral_update_mods(uint8_t payload) {
-    widget_state.r_mods = payload & 0x0F;
-    widget_state.is_mac = !!(payload & BIT(4));
-    display_submit(&mod_render_work);
 }
 
 /* ── Event listeners ─────────────────────────────────────────────────── */
@@ -304,14 +214,11 @@ int blecorne_peripheral_widget_init(struct blecorne_peripheral_widget *widget,
 
     widget_state.battery_level = zmk_battery_state_of_charge();
     widget_state.connected     = zmk_split_bt_peripheral_is_connected();
-    widget_state.is_mac        = false;
-    widget_state.r_mods        = 0;
 
     k_timer_start(&flash_timer, K_MSEC(500), K_MSEC(500));
 
     render_status_canvas(&widget_state);
-    render_mod_canvas(&widget_state);
-    render_layout_canvas();
+    render_static_canvases();
 
     return 0;
 }

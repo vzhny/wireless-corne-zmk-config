@@ -25,7 +25,7 @@ mirrored in both mockups, not just one.**
   the pixel mockup, on the canvas `fillText` calls too) — all text in both mockups is
   monospace, matching the real device's aesthetic
 - `display_preview.html` shows all left/right display states: BT status, battery,
-  modifiers, layer circles, WiFi glyph
+  layer name, WiFi glyph
 - `nice_view_pixel_mockup.html` is a byte-exact 1:1 recreation of what the current C code
   draws (canvas coordinates, `BASE` offsets, glyph bitmaps), overlaid on a real module
   photo — must be kept in lockstep with `config/widgets/*.c`, not just aspirational
@@ -44,26 +44,21 @@ mirrored in both mockups, not just one.**
   screenshots of the CSS-scaled canvas can still look slightly soft at non-integer zoom
   factors (the photo-overlay view scales via a `0.34` transform) even when the source
   data is genuinely crisp; that's a display/zoom artifact, not a data problem.
-- `nice_view_pixel_mockup.html`'s modifier-cell border/fill (`drawModBox`) uses canvas
-  2D's `roundRect()` rasterized through the same threshold-to-binary pipeline as text/
-  icons (`rasterizeRoundRect()` + `blendGlyph()`), not manual pixel math - keeps the
-  border crisp and consistent with everything else. `blendGlyph()` takes an optional
-  `color` param (defaults to `FG`) specifically so pressed modifier cells can blend
-  content in `BG` instead (the invert-on-press look) - don't hardcode `FG` in new
-  callers if the content might need to invert.
-- `nice_view_pixel_mockup.html`'s `drawModIcon()` centers icons manually (`ICON_W` +
-  computed `contentX`), not via `fillText` `align: 'center'` - canvas `measureText()`
-  returns the font's advance width, not tight ink bounds, the identical mismatch that
-  makes LVGL's `LV_TEXT_ALIGN_CENTER` mis-center these same glyphs in firmware (see
-  Fonts above). Keep `ICON_W` in sync with `icon_font.h`'s `ICON_*_W` macros if the
-  icon font is ever regenerated.
+- `nice_view_pixel_mockup.html`'s `drawText()` `fontPx` equals the `lv_font_conv --size`
+  (browser px and `--size` give the same 0.5em advance: 20 → 10px/char, 24 → 12px/char -
+  measured headless). Vertical placement differs (browser `'top'` baseline vs LVGL's
+  `line_height`/`base_line` box), so `LAYER_TEXT_Y` (19) is tuned to land the layer
+  name's ink on rows 27-40, the same rows firmware's `y=24` gives. Re-measure the ink
+  rows headless if the font or y ever changes.
+- `rasterizeIconInk()` centers icons by *measured* ink bounds (`TextMetrics.
+  actualBoundingBox*`), not `fillText` alignment - advance width ≠ ink width for these
+  glyphs (the same mismatch that mis-centers them under LVGL's `LV_TEXT_ALIGN_CENTER`).
 - All glyphs rendered as pixel-art SVG (in `display_preview.html`) or pixel-art bitmap
   arrays (in `nice_view_pixel_mockup.html`) — NOT smooth curves — matching the actual L8 bitmap
 - `display_preview.html`: plain string concatenation in JS — no template literals (backtick
   regex injection risk). `nice_view_pixel_mockup.html` uses template literals already;
   don't backport that to `display_preview.html`
 - WiFi glyph: `wifiSvg(connected)` — 2× scale pixel-art, 28×28 viewBox in 14×14 CSS SVG
-- Alt glyph: `altSVG()` — 2× scale pixel-art, `fill="currentColor"` for active/inactive states
 - BT glyph: `btSvg(vis)` — inline SVG with opacity for connected/disconnected
 
 ## Display Architecture
@@ -73,8 +68,8 @@ mirrored in both mockups, not just one.**
 | Canvas | Driver x offset | Physical region | Content |
 |--------|----------------|-----------------|---------|
 | `canvas_bot` | +92 (TOP_RIGHT) | Top strip — full 68px available, content only drawn in the first 24 | Status (BT, battery, profile / WiFi glyph) |
-| `canvas_mid` | +24 | Middle 68 px | Modifier glyphs |
-| `canvas_top` | −44 | Bottom strip — hardware-truncated to 24px, rest of the 68px canvas is silently dropped | Layer name (central, text only, no circles) / blank (peripheral) |
+| `canvas_mid` | +24 | Middle 68 px | Layer name, size 24, `y=24` (central) / rules only (peripheral); 1px rules at `y=0`/`y=67` on both |
+| `canvas_top` | −44 | Bottom strip — hardware-truncated to 24px, rest of the 68px canvas is silently dropped | Blank (both halves) |
 
 Two independent constraints here, easy to conflate:
 1. **Which offset lands where physically** is fixed by the rotation math: `-44` always
@@ -87,10 +82,10 @@ Two independent constraints here, easy to conflate:
    session — first assuming `-44`=top (wrong, never verified), then assuming any canvas
    could go in either slot regardless of content (wrong when the layer canvas still had
    circles needing the full 68px; fine now that it's text-only).
-- Status now sits in the `+92`/top slot; layer name sits in the `-44`/bottom slot. Layer
-  name text was moved from `y=27` (centered in a full 68px canvas) to `y=5` (centered in
-  just the 24 visible rows) to match — text placed below row 23 in that slot would be
-  silently clipped, same as it would be for status content.
+- Status sits in the `+92`/top slot; the layer name sits in the `+24`/middle slot
+  (moved there from the `-44`/bottom slot once the modifier cells were removed, so it
+  can use the full 68px and a bigger font). The `-44` slot is blank on both halves -
+  anything drawn below row 23 there would be silently clipped.
 
 - Canvas is 68×68 px, L8 format; byte values follow `LVGL_FOREGROUND`/`LVGL_BACKGROUND`
   (util.h) — plain `lv_color_black()`/`lv_color_white()`, background=`0xFF`, ink=`0x00`
@@ -117,16 +112,12 @@ config/
   widgets/
     util.h / util.c           — rotate_canvas, canvas_draw_* primitives
     fonts/
-      pixel_operator_mono.h/.c       — "Ctl"/"Win"/"Alt" mod-cell text only, size 16
-      pixel_operator_mono_large.h/.c — Layer name, BT profile/battery %, size 20
-      icon_font.h/.c                 — Modifier-row icons (shift/ctrl/cmd/opt), size 24
+      pixel_operator_mono_large.h/.c — BT profile/battery %, size 20
+      pixel_operator_mono_xl.h/.c    — Central-only: layer name, size 24
       status_icon_font.h/.c          — Status-row icons (bt/wifi/battery*5/bolt), size 18
       status_icon_font_wifi.h/.c     — Peripheral-only: wifi icon alone, size 16 (smaller)
-    blecorne_central.c        — Left half widget (status + mods + layer name)
-    blecorne_peripheral.c     — Right half widget (status + mods)
-  split/
-    modifier_sync_central.c   — BLE GATT client: writes R-mod nibble + is_mac to peripheral
-    modifier_sync_peripheral.c — BLE GATT server: receives that byte, calls update_mods
+    blecorne_central.c        — Left half widget (status + layer name)
+    blecorne_peripheral.c     — Right half widget (status only)
 boards/boardsource/blecorne/
   blecorne.dtsi               — Shared DTS: blue_led P1.09, ext_power P0.31, vbatt ADC
   blecorne_left.dts / _right.dts — Per-half kscan matrices
@@ -134,197 +125,46 @@ boards/boardsource/blecorne/
 
 ### Fonts (`config/widgets/fonts/`)
 
-All hand-drawn 0/1 bitmap glyphs (`glyphs.c`, deleted) and LVGL's built-in Montserrat
-(bpp=4, antialiased) were replaced with fonts converted via `lv_font_conv`
-(`npx lv_font_conv`), all at `--bpp 1` (pure black/white, no antialiasing). This
-project's Sharp Memory LCD is strictly monochrome - a bpp=4 font's antialiased gray
-edge pixels get thresholded on that display and look soft/mushy; a bpp=1 font has no
-antialiasing to lose, so it stays crisp regardless of size. Both source `.ttf` files
-live at the repo root (`PixelOperatorMono.ttf`, `JetBrainsMonoNLNerdFont-Regular.ttf`)
-for re-running the conversion if a codepoint/size needs to change.
+All fonts are converted with `lv_font_conv` (`npx lv_font_conv`) at `--bpp 1` (pure
+black/white). This Sharp Memory LCD is strictly monochrome: a bpp=4 font's antialiased
+edge pixels get thresholded and look mushy; bpp=1 stays crisp. Both source `.ttf` files
+live at the repo root (`PixelOperatorMono.ttf`, `JetBrainsMonoNLNerdFont-Regular.ttf`);
+each generated `.c` has its exact `Opts:` command line in its header comment.
 
-**Two `pixel_operator_mono*` fonts, one source TTF, two sizes** - each screen element
-gets whichever size actually fits it, rather than compromising on one:
+| Font | Source | Size | Used for |
+|------|--------|------|----------|
+| `pixel_operator_mono_large` | PixelOperatorMono (CC0), ASCII | 20 (10px/char) | BT profile / battery `%` |
+| `pixel_operator_mono_xl` | PixelOperatorMono, ASCII | 24 (12px/char) | Layer name (central) |
+| `status_icon_font` | JetBrains Mono Nerd Font, listed PUA codepoints | 18 | BT, battery ×5, bolt |
+| `status_icon_font_wifi` | same | 16 | Peripheral wifi/connection icon only |
 
-| Font | Size | `adv_w`/`line_height` | Used for |
-|------|------|------------------------|----------|
-| `pixel_operator_mono` | 16 | 8px/char, 13px | "Ctl"/"Win"/"Alt" mod-cell text only |
-| `pixel_operator_mono_large` | 20 | 10px/char, 16px | Layer name, BT profile/battery `%` - bigger for readability |
+- Size 24 is an exact 2× of Pixel Operator's pixel grid (every stroke a clean 2px). The
+  longest layer name ("Admin", 5 chars) is 60px in the 68px canvas; size 26+ clips.
+- Status icons: `ICON_BT` U+F294 `fa-bluetooth_b`, `ICON_WIFI` U+F1EB `fa-wifi`,
+  `ICON_BATTERY_FULL/3_4/HALF/QUARTER/EMPTY` U+F240-F244, `ICON_BOLT` U+F0E7 `fa-flash`.
+  `ICON_BOLT` once pointed at `md-bolt` (U+F0DB3), which is a screw, not a lightning
+  bolt. **Verify any new codepoint by actually rendering it** (`fillText` on a
+  `@font-face`'d span), never by its Nerd Fonts name alone.
+- The wifi icon has its own smaller font because it is the widest glyph (`box_w=21` at
+  size 18) and crowded its corner.
+- `battery_icon()` (each widget .c) picks one of five discrete levels. At <=5% it shows
+  `ICON_BATTERY_EMPTY`, drawn only while `flash_on` (blinks). While charging (central
+  only - peripheral can't read USB power) `ICON_BOLT` replaces the battery icon.
 
-There used to be a third, `pixel_operator_mono_small` (size 10), for the peripheral's
-layout row when it showed `"QWERTY"`/`"COLEMAK-DH"` - removed once that text shortened
-to `"Qwerty"`/`"Colemak"` and moved to `pixel_operator_mono_large` to match the layer
-name's size (see Status strip below). That layout row itself was later removed
-entirely once the Colemak-DH base layers were dropped (see Layer names below) - only
-one letter-layout remained, leaving nothing for the row to distinguish. Both remaining
-fonts come from
-`PixelOperatorMono.ttf` (CC0, a font actually designed pixel-by-pixel for bitmap
-displays), `-r 0x20-0x7F` (ASCII).
+There used to be modifier cells in `canvas_mid` (Shift/Ctrl/GUI/Alt boxes, `icon_font`,
+`pixel_operator_mono` size 16, display-only "shadow-tracking" of the homerow positions,
+and a custom split GATT service syncing the right-hand mods to the peripheral) -
+**removed** (2026-10-20). Drawing them was cheap, but the plumbing sent a BLE write to
+the peripheral on every keystroke plus a peripheral redraw, for an indicator that was
+only an approximation of real HID state. Don't re-add without a reason that outweighs
+that radio/battery cost.
 
-**`icon_font`** and **`status_icon_font`** — both from `JetBrainsMonoNLNerdFont-Regular.ttf`
-(MIT, via [Nerd Fonts](https://github.com/ryanoasis/nerd-fonts), which patches Material
-Design Icons + Font Awesome glyphs into the Private Use Area of any base font), specific
-PUA codepoints only (not a full range - keeps each font tiny). **Two separate fonts, not
-one**: a single shared size (originally 24, reused for everything) clipped/overflowed the
-status strip - `icon_font` is `--size 24` for the modifier row's 28px cells,
-`status_icon_font` is `--size 18` (bumped up from an initial `--size 12` that read as
-"way too small" once compared against the reference implementation) to read clearly in
-the status row, which has the full 68px canvas to grow into (see Status strip below).
-Same source TTF, just converted twice with different `--size`/`-r` codepoint sets.
-Font Awesome Free has **no** Mac keyboard glyphs (⌘⌥⇧⌃) at all; Nerd Fonts' Material
-Design set does (`md-apple_keyboard_*`), and those look better-designed than the raw
-Unicode Miscellaneous Technical symbols anyway.
+**Flash state** (`flash_on`, both widgets): one 500ms timer, always running, toggles
+`flash_on` and redraws the status strip. Drives the BT/connection icon's blink while
+searching and the battery-empty blink at <=5%.
 
-`icon_font.h` (modifier row, size 24):
-
-| Symbol | Macro | Codepoint | Source glyph | ink width (`ICON_*_W`) |
-|--------|-------|-----------|--------------|------------------------|
-| ⇧ Shift | `ICON_SHIFT` | U+F005D | `md-arrow_up` | 16 |
-| ⌃ Ctrl | `ICON_CTRL` | U+F0634 | `md-apple_keyboard_control` (shared Win+Mac) | 16 |
-| ⌘ Cmd | `ICON_CMD` | U+F0633 | `md-apple_keyboard_command` | 20 |
-| ⌥ Opt | `ICON_OPT` | U+F0635 | `md-apple_keyboard_option` | 18 |
-
-`ICON_SHIFT` isn't `md-apple_keyboard_shift` (U+F0636) anymore - that glyph is a
-solid/filled arrow-with-roof shape, visibly heavier-stroked than the "Ctl"/"Win"/"Alt"
-text and the other 3 (thin-lined) icons, confirmed on real hardware. This font has no
-outlined/thin variant of that specific shape. Went through two intermediate choices
-before landing here: `md-chevron_up` (U+F0143) fixed the stroke weight but then
-looked nearly identical to `ICON_CTRL` (also a plain "^") at this size; `fa-angles_up`
-(U+F102, a double chevron "^^") fixed that but was a poorer match for the actual Mac ⇧
-glyph shape. `md-arrow_up` (arrowhead + stem) is thin-stroked like the rest, distinct
-from Ctrl's bare caret, and closer to what ⇧ actually looks like. If a source glyph is
-ever swapped again, actually render and compare it (`fillText` on a `@font-face`'d
-span, not just the Nerd Fonts name) rather than assuming - "looks about right" from
-the name alone is exactly how the original `md-bolt` mixup (see Fonts below, status
-row) and this one both happened.
-
-`fa-windows` (U+F17A, formerly `ICON_WIN`) was dropped from the conversion entirely -
-nothing ever referenced it, since Windows shows "Win" as text (see below), never an icon.
-
-Each icon's `ICON_*_W` macro is its real ink width (`box_w` in the generated
-`icon_font.c`); `ICON_*_OFS_X` is its left bearing (`ofs_x`, currently 0 for all 4,
-kept as named constants rather than assumed so a future glyph swap with nonzero
-bearing doesn't silently mis-center). Needed because `LV_TEXT_ALIGN_CENTER` centers by
-the font's shared `adv_w` (~14px, the same for every glyph in this font), not each
-glyph's actual `box_w` (16-20px, wider than `adv_w`), so centering-by-advance-width
-visibly shifts these icons off-center. `draw_mod_icon()` in both widget `.c` files
-centers manually instead: `LV_TEXT_ALIGN_LEFT` at `x + (MOD_BOX_W - icon_w) / 2 -
-icon_ofs_x` horizontally. Vertically it's just a flat `y + 3` for all four glyphs, not
-a per-glyph adjustment - working through LVGL's glyph-placement formula by hand
-(`baseline_y = y + line_height - base_line`, `glyph_top = baseline_y - ofs_y - box_h`)
-shows this already centers all four within about half a pixel of the box center,
-despite their differing `box_h`/`ofs_y`, so no per-icon vertical constant was needed.
-The pixel mockup solves the equivalent centering problem more directly, since it has
-no such font-metrics table to hand-derive from: `rasterizeIconInk()` uses the
-*measured* ink bounds from canvas `TextMetrics.actualBoundingBox{Left,Right,
-Ascent,Descent}` to center both axes exactly, rather than reproducing LVGL's box math in
-JS. Prefer that measured-ink approach for any *new* mockup icon-drawing code - it's more
-robust than a hand-maintained constants table and was what actually fixed a previous
-round's "icons still slightly off-center, sitting low" bug (the old mockup code used
-`fillText`'s own `'center'` alignment plus a guessed vertical offset, neither of which
-was ink-accurate).
-
-`status_icon_font.h` (status row, size 18):
-
-| Symbol | Macro | Codepoint | Source glyph |
-|--------|-------|-----------|--------------|
-| ᛒ→ BT | `ICON_BT` | U+F294 | `fa-bluetooth_b` |
-| 📶 WiFi | `ICON_WIFI` | U+F1EB | `fa-wifi` |
-| 🔋 Battery 76-100% | `ICON_BATTERY_FULL` | U+F240 | `fa-battery_full` |
-| 🔋 Battery 51-75% | `ICON_BATTERY_3_4` | U+F241 | `fa-battery_three_quarters` |
-| 🔋 Battery 26-50% | `ICON_BATTERY_HALF` | U+F242 | `fa-battery_half` |
-| 🔋 Battery 6-25% | `ICON_BATTERY_QUARTER` | U+F243 | `fa-battery_quarter` |
-| 🔋 Battery ≤5% | `ICON_BATTERY_EMPTY` | U+F244 | `fa-battery_empty` (blinks, see below) |
-| ⚡ Charging | `ICON_BOLT` | U+F0E7 | `fa-flash` (this Nerd Font's name for Font Awesome's bolt glyph) |
-
-`ICON_BOLT` used to point at `md-bolt` (U+F0DB3) - a screw/fastener icon, not a
-lightning bolt. Verify any new codepoint choice by actually rendering the glyph
-(`compare_bolt.html`-style check) rather than trusting a Nerd Fonts name alone -
-`md-bolt` sounded right and wasn't.
-
-Peripheral's wifi/connection icon is a **separate, smaller font**,
-`status_icon_font_wifi.h/.c` (size 16, same U+F1EB codepoint, `ICON_WIFI_SMALL`) - it's
-the widest glyph in `status_icon_font` (`box_w=21` at size 18) and read as crowding its
-corner at the same size as BT/battery/bolt on the other half. `draw_wifi_icon()` in
-`blecorne_peripheral.c` uses this font instead of `status_icon_font`; nothing else
-needed a second size since only one glyph out of the set was too wide.
-
-**Windows uses text for Ctrl/GUI/Alt, icons for Shift only; Mac uses icons for all
-four.** Real Windows keyboards print "Ctrl"/"Win"/"Alt" as **text** on the keycap, not
-a symbol - Mac keyboards do print ⌘/⌥/⌃ symbols (and, less commonly, ⇧), so Mac stays
-all-icon. `render_mod_canvas` branches on `is_mac`: Mac calls `draw_mod_icon()` for
-Shift/Ctrl/Cmd/Opt; Windows calls `draw_mod_icon()` for Shift only and `draw_mod_text()`
-(`"Ctl"`/`"Win"`/`"Alt"`, `pixel_operator_mono`) for the rest - "Ctrl" (4 chars) wraps
-onto a second line at this box/font size, so it's "Ctl" (3 chars, matching "Win"/"Alt")
-instead. This is a deliberate asymmetry, not a gap to fill later - don't "fix" Windows
-to use icons for consistency.
-
-Battery is `status_icon_font` glyphs now, not hand-drawn rects - `draw_battery` was
-removed from `util.c` entirely. `battery_icon()` (in each widget .c) picks one of five
-discrete Font Awesome levels from the percentage (not a continuous fill like the old
-hand-drawn shell+bar). At <=5% the icon is `ICON_BATTERY_EMPTY` and only drawn while
-`flash_on` (blinks - see below); while charging, the battery icon is replaced entirely
-by `ICON_BOLT` (nothing battery-related drawn at all, central only - peripheral has no
-charging state to read).
-
-**Flash state** (`flash_on`, both widgets): a single 500ms-heartbeat timer, always
-running (not started/stopped based on BT connection like the old `bt_flash_on` was),
-driving two independent blinks: the BT glyph while searching (central only) and the
-battery-empty glyph at <=5% (both halves). One shared timer/bool since both just need
-"on/off every 500ms", not separate schedules - had to switch from "stop the timer once
-BT connects" to "always running" since battery-empty needs the blink regardless of BT
-state.
-
-The BT icon itself is **always drawn, never absent** - `draw_status_icon(canvas_bot, 0,
-0, 24, ICON_BT, bt_connected || flash_on, LV_TEXT_ALIGN_LEFT)` runs unconditionally now
-(no `if` gate). Dim (`LV_OPA_40`) when disconnected, full white (`LV_OPA_COVER`) once
-connected - matching the peripheral's wifi icon, which was already always-drawn with
-this same dim/bright-by-`active` treatment (`draw_wifi_icon`, see Fonts above). While
-searching (not yet connected), `active` alternates with `flash_on` every 500ms, so the
-icon blinks dim/bright rather than sitting statically dim or vanishing - a prior
-version only called `draw_status_icon` `if (bt_connected || flash_on)`, which made the
-icon disappear entirely for half of each blink cycle instead of dimming.
-
-**Modifier cells** (`draw_mod_box`/`draw_mod_icon`/`draw_mod_text` in each widget .c):
-each modifier key is a `MOD_BOX_W`×`MOD_BOX_H` (30×26) box with a 1px rounded border
-(`radius=6`), **always visible** regardless of press state. Pressed ("active") is shown
-by filling the box with foreground color and inverting the icon/text color inside it to
-background color (a "lit key" look) - replacing the old plain opacity fade
-(`LV_OPA_COVER`/`LV_OPA_40`) entirely. Unpressed = transparent fill + foreground content
-+ border only.
-
-Modifier canvas (`canvas_mid`) layout: two rows of these cells - Shift+Ctrl on row 1
-(y=6), GUI+Alt on row 2 (y=38), columns at x=4/x=36. Same arrangement on both halves
-(peripheral doesn't mirror right-to-left - with only 2 columns instead of the old 4,
-mirroring added complexity without a real benefit). This canvas also draws two 1px
-horizontal rules (`y=0` and `y=67`, full width) as section separators between the
-status/mods/layer strips - safe to draw both from this one canvas since it uses its
-full 68px budget with no hardware truncation, landing exactly on the true physical
-boundaries on both sides (see Canvas layout above). A similar rule at the status or
-layer canvas's own edge would NOT line up the same way - those two are either only
-partially used (status) or hardware-truncated (layer).
-
-### Modifier sync (split custom GATT)
-
-Central writes a single byte to peripheral (on keycode *and* layer events - layer
-changes affect bit 4, not just the R-mod nibble):
-- Bits 0-3: R-mod nibble, `(full_mods >> 4) & 0x0F`. Peripheral bit mapping:
-  `bit0=RCtrl, bit1=RShift, bit2=RAlt, bit3=RGUI`.
-- Bit 4: `is_mac` - Mac vs Win glyph order.
-
-`is_mac` is computed by checking whether the specific profile layer
-(`zmk_keymap_layer_active(LAYER_QWERTY_MAC)`, `blecorne_central.h`) is active, **not**
-by comparing `zmk_keymap_highest_layer_active()` against a layer number - see Layer
-names below for why that broke on real hardware.
-
-Peripheral has no local keymap/layer state of its own (see the ZMK compile-guard note
-elsewhere in this doc), so this flag has to be forwarded - this byte is peripheral's
-only source of truth for anything layer-related.
-
-There used to be a second flag here, `is_colemak` (bit 5), driving the peripheral's
-layout-name row (`"Qwerty"`/`"Colemak"`) - removed along with the Colemak-DH base
-layers (see Layer names below); Qwerty is now the only letter-layout, so there's
-nothing left for that bit to distinguish.
+The BT/connection icon is **always drawn, never absent** - `active = connected ||
+flash_on`, so while searching it blinks rather than vanishing permanently.
 
 ### Layer names (central widget)
 
@@ -352,10 +192,8 @@ combos' `layers = <...>`, `LAYER_QWERTY_MAC`, `layer_names[]`) - redo the full
 old→new layer table exercise rather than patching numbers by feel.
 
 Layers 0-2 (Qwerty Win/Win-profile/Mac) all show **"Base"** - drawn at
-`pixel_operator_mono_large` (bigger, for readability). Win vs Mac is shown by the
-modifier row's icons-vs-text instead (see Fonts above) - central has no separate row
-for that distinction since its layer canvas is fully occupied by "Base" or the
-non-base layer names (Num/Nav/etc).
+`pixel_operator_mono_xl` in the middle strip. The display doesn't distinguish Win vs
+Mac.
 
 **Func is 6, Admin is 7 - Admin must be the higher index.** `zmk_keymap_highest_layer_active()`
 (used by `layer_event_cb` here, for the layer-name text only) returns whichever active
@@ -367,38 +205,21 @@ correctly activate Admin's keymap bindings but the display would still say "Func
 Confirmed on real hardware. If a new conditional layer is ever added, give it the
 highest index of anything it can combine with, not just the next free number.
 
-**`is_mac` must NOT be derived from `zmk_keymap_highest_layer_active()` -
-confirmed broken on real hardware.** That call returns whichever active layer has the
-highest index, and NUM/NAV/SYM/FUNC/ADMIN (3-7) are all higher than every profile layer
-(0-2) - so the instant one of those momentary/conditional layers stacks on top of a
-profile (e.g. holding Admin while on Qwerty Mac), the highest-active layer becomes 6 or
-7, `active_layer == LAYER_QWERTY_MAC` reads false, and the mod row silently flips to
-Windows glyphs/order until you drop back to just the base layer. `is_mac_active()`
-(`blecorne_central.c`) and `send_mod_state()` (`modifier_sync_central.c`) instead check
-`zmk_keymap_layer_active(LAYER_QWERTY_MAC)` directly (`LAYER_QWERTY_MAC` = 2, defined
-once in `blecorne_central.h` and shared by both files) - that stays correct regardless
-of what else is stacked on top, since it asks "is this specific toggle bit set", not
-"what's currently highest". `widget_state.active_layer` (still `highest_layer_active()`)
-is only used for the layer-*name* text, where "show whichever is highest" (e.g. "Admin"
-while Admin is held) is the actually-correct behavior - don't collapse these two back
-into one call.
+**Combos' `layers = <...>` Win/Mac split must check the profile layer, not the
+highest-active layer** - NUM/NAV/SYM/FUNC/ADMIN (3-7) all stack above the profile
+layers (0-2), so anything keyed off `zmk_keymap_highest_layer_active()` silently reads
+"not Mac" while one of them is held. `widget_state.active_layer`
+(`highest_layer_active()`) is only used for the layer-*name* text, where "show
+whichever is highest" is correct.
 
-No layer-number circles anymore (removed — at 10px they were too small to read
-reliably; `draw_circle` was deleted from `util.c`/`util.h` since nothing called it
-after removal, and `CONFIG_LV_FONT_MONTSERRAT_8` dropped from `blecorne.conf` since the
-circle numbers were its only user). The layer canvas is just the centered name — and
-since it now sits in the 24-visible-row slot (see Canvas layout above), the text draws
-at `y=5`, not vertically centered in the full 68px canvas.
+No layer-number circles (removed - too small to read).
 
-### Peripheral's canvas_top (unused)
+### Peripheral's middle and bottom strips
 
-`render_layout_canvas()` (`blecorne_peripheral.c`) used to draw `"Qwerty"`/`"Colemak"`
-in `canvas_top` (`is_colemak`-driven, see Modifier sync above) - now that Colemak is
-gone, there's only one letter-layout to show, so this row is dead weight. Rather than
-leave a static "Qwerty" that never changes, the function now just clears the canvas and
-returns - `canvas_top` is blank on the peripheral, same as it was before the
-layout-name row was ever added. If a reason to use this row resurfaces, remember it's
-hardware-truncated to 24 visible rows (see Canvas layout above), same as central's.
+`render_static_canvases()` (`blecorne_peripheral.c`) draws the two section rules in
+`canvas_mid` and clears `canvas_top`, once at init. The peripheral has no keymap/layer
+state of its own (ZMK doesn't run the keymap there), so it has nothing to show in these
+strips without a custom split sync - which was removed along with the mod cells.
 
 ### Status strip (`canvas_bot`, both halves)
 
@@ -475,76 +296,9 @@ asking** - these are tuned to how the user actually types (tapping-term last set
 the "modifiers don't show in real time" problem; solve that on the display side (see
 below) instead of by changing what these keys actually do.
 
-### Modifier display (shadow-tracking)
-
-The mod cells don't wait for the real hold-tap decision at all - `blecorne_central.c`
-listens to raw `zmk_position_state_changed` events (fired the instant a physical key
-goes down/up, before any hold-tap/combo logic resolves it) for the known modifier key
-positions, and manually lights up that mod on the display after *that position's own*
-`tapping-term-ms`, entirely independent of whatever ZMK's real hold-tap decision
-eventually is. This is `shadow_mods` (a file-scope `uint8_t`, same 8-bit layout as a
-real HID mod byte) - and it is the **only** source `render_mod_canvas` and
-`blecorne_central_get_display_mods()` (used by `modifier_sync_central.c`'s
-`send_mod_state()`, forwarded to the peripheral) read for the mod cells. Every
-modifier in this keymap is bound through one of the 8 tracked positions, so this alone
-is a complete picture of what should be lit.
-
-This used to be OR'd with the real `zmk_hid_get_explicit_mods()` instead of replacing
-it, on the theory that shadow-tracking only needed to help the *lighting-up* side and
-the real HID state would always correctly clear itself. That was wrong: releasing a
-modifier held in isolation (no other key ever pressed) left the cell stuck lit,
-confirmed on hardware, on every mod on both halves - something about that snapshot
-doesn't reliably reflect the release in this exact scenario. Since shadow-tracking
-already has complete, direct, reliable coverage of every position that can light a mod
-cell, the fix was to stop reading the real HID snapshot for this at all rather than
-chase the exact cause of the stale read.
-
-Because `shadow_mods` changes are driven purely by position-event timers now - not by
-any `zmk_keycode_state_changed` central would otherwise see - `blecorne_central.c`
-calls `modifier_sync_notify_mods_changed()` (declared in `split/modifier_sync.h`,
-implemented in `modifier_sync_central.c`) directly whenever a shadow bit changes, so
-the peripheral's copy doesn't wait on some unrelated keystroke to resync.
-
-**This is a deliberate approximation, not real HID state, and can disagree with it:**
-- A quick type-through that resolves HOLD via `"balanced"`'s interrupt-release rule
-  before the shadow timer fires won't show lit even though the real hold did register.
-- A position that's also part of a combo (`combo_esc` shares 13, `combo_sqt` shares
-  21/22) can light up slightly late if that combo doesn't end up firing - ZMK briefly
-  captures the position event to see if the combo completes, then replays it once it
-  doesn't (with the original timestamp, so the *real* HID timing is unaffected, but our
-  shadow timer - armed on receipt, not on the original timestamp - starts a few ms late).
-- If a combo *does* fire using one of these positions, the position event is consumed
-  entirely and shadow-tracking never sees it - no phantom light in that case.
-
-Accepted trade-offs, not bugs - the point is a real-time-*feeling* indicator, not a
-perfectly accurate one. `hml`/`hmr`/`thm`'s actual tap/hold behavior (see Homerow mods
-above) is untouched by any of this.
-
-Position -> logical mod (from blecorne.keymap's homerow/thumb bindings - update this if
-those ever move):
-
-| Position | Win | Mac | Notes |
-|----------|-----|-----|-------|
-| 13 (L homerow, A) | LCtrl | LGui | swaps with `is_mac` |
-| 14 (L homerow, S) | LGui | LCtrl | swaps with `is_mac` |
-| 15 (L homerow, D) | LAlt | LAlt | fixed |
-| 20 (R homerow, K) | RAlt | RAlt | fixed |
-| 21 (R homerow, L) | RGui | RCtrl | swaps with `is_mac` |
-| 22 (R homerow, ;) | RCtrl | RGui | swaps with `is_mac` |
-| 38 (L thumb) | LShift | LShift | fixed |
-| 39 (R thumb) | RShift | RShift | fixed |
-
-This table is keyed by physical position, not by letter-layout - unaffected by the
-Colemak-DH base layers' removal (see Layer names above).
-
 ### Caps Word
 
-Combo: both shift thumbs (positions 38+39), timeout 50 ms → `&caps_word`. Note: since
-shadow-tracking above watches raw presses on positions 38/39 independent of what combo
-they're part of, holding both thumbs together (which triggers this combo) will also
-light up both Shift cells as a side effect - not real caps-word state tracking (it
-won't stay lit for the rest of a caps-word-affected word), just what the generic
-per-position timer does when both of its thumb positions happen to be held together.
+Combo: both shift thumbs (positions 38+39), timeout 50 ms → `&caps_word`.
 
 ## Build & Flash
 
@@ -555,7 +309,7 @@ per-position timer does when both of its thumb positions happen to be held toget
 # Flash: drag UF2 onto bootloader drive (double-tap reset)
 ```
 
-**Why `config/CMakeLists.txt` (custom_status_screen.c, all widget/font/split sources)
+**Why `config/CMakeLists.txt` (custom_status_screen.c, all widget/font sources)
 actually gets compiled, when nothing in `build.yaml`/`west.yml` says so directly:**
 `ZMK_CONFIG` only wires up `.conf`/`.overlay`/keymap files, never a `CMakeLists.txt` —
 what pulls this repo's `config/CMakeLists.txt` into the build is `zephyr/module.yml`

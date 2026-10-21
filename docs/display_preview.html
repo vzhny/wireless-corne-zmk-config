@@ -20,13 +20,7 @@ h1{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
 .ts-a{position:absolute;top:0;left:0;right:0;height:24px;display:flex;align-items:center;justify-content:space-between;padding:0 4px;}
 .ts-b{position:absolute;top:24px;left:0;right:0;height:24px;display:flex;align-items:center;padding:0 4px;}
 .ms{position:absolute;top:48px;left:0;right:0;height:136px;}
-.ms-row{position:absolute;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:8px;}
-.ms-row.r1{top:8px;}
-.ms-row.r2{top:72px;}
-.bs{position:absolute;top:184px;left:0;right:0;height:136px;}
-.bs-l{position:absolute;top:0;left:0;right:0;height:136px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--display-fg);white-space:nowrap;overflow:hidden;}
-.g{width:56px;height:56px;border:2px solid var(--inactive);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:26px;color:var(--inactive-txt);flex-shrink:0;line-height:1;}
-.g.on{background:var(--active-bg);border-color:var(--active-bg);color:var(--active-txt);}
+.ms-l{position:absolute;top:0;left:0;right:0;height:136px;display:flex;align-items:center;justify-content:center;font-size:38px;font-weight:700;color:var(--display-fg);white-space:nowrap;}
 .bt{width:14px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .twr{width:14px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .bu{display:flex;align-items:center;gap:3px;flex-shrink:0;}
@@ -83,22 +77,6 @@ function wifiSvg(connected){
     + '</svg></div>';
 }
 
-function altSVG(){
-  // Pixel-art ⎇ glyph matching alt_map bitmap (2x scale, currentColor for active/inactive)
-  // Lit pixels (bitmap): row2:x=7  row3:x=6-8  row4:x=5-9  rows5-8:x=7  row9:x=5-9
-  function p(x,y,w,h){ return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+(h||2)+'" fill="currentColor"/>'; }
-  return '<svg width="24" height="24" viewBox="0 0 28 28" style="display:block;margin:auto">'
-    + p(14,4,2)
-    + p(12,6,6)
-    + p(10,8,10)
-    + p(14,10,2)
-    + p(14,12,2)
-    + p(14,14,2)
-    + p(14,16,2)
-    + p(10,18,10)
-    + '</svg>';
-}
-
 function battUnit(pct,chg){
   const w = Math.max(0, Math.round(27*pct/100));
   const low = pct <= 20;
@@ -109,48 +87,30 @@ function battUnit(pct,chg){
     + '<span class="tx">'+pct+'%</span></div>';
 }
 
-function G(sym,on){
-  return '<div class="g'+(on?' on':'')+'">'+sym+'</div>';
-}
-
 function L(o){
   var btState=o.btState||'connected', btProfile=o.btProfile||0,
       batt=o.batt||75, charging=o.charging||false,
-      mods=o.mods||[0,0,0,0], isMac=o.isMac||false,
-      layer=o.layer||'Base', activeLayer=o.activeLayer||0;
-  var s=mods[0],c=mods[1],g=mods[2],a=mods[3];
+      layer=o.layer||'Base';
   var btVis = btState !== 'search-off';
   var isConnecting = btState === 'connecting';
   var iconHtml = isConnecting ? btSvgAnimated() : btSvg(btVis);
   // Blank while searching - the flashing BT icon (btSvgAnimated) is the only
   // "still pairing" indicator, matching real firmware (no "Connecting..." text).
   var btLineHtml = isConnecting ? '' : '<span class="tx b">BT '+btProfile+'</span>';
-  var row1 = [G('&#8679;',s), G('&#8963;',c)];
-  var row2 = isMac
-    ? [G('&#8984;',g), G('&#8997;',a)]
-    : [G('&#8862;',g), G(altSVG(),a)];
   return '<div class="display"><div class="di">'
     + '<div class="ts">'
     + '<div class="ts-a">'+iconHtml+battUnit(batt,charging)+'</div>'
     + '<div class="ts-b">'+btLineHtml+'</div>'
     + '</div>'
-    + '<div class="ms"><div class="ms-row r1">'+row1.join('')+'</div><div class="ms-row r2">'+row2.join('')+'</div></div>'
-    + '<div class="bs"><div class="bs-l">'+layer+'</div></div>'
+    + '<div class="ms"><div class="ms-l">'+layer+'</div></div>'
     + '</div></div>';
 }
 
 function R(o){
-  var connected=o.connected!==false, batt=o.batt||75,
-      mods=o.mods||[0,0,0,0], isMac=o.isMac||false;
-  var ra=mods[0],rg=mods[1],rc=mods[2],rs=mods[3];
-  var row1 = [G('&#8679;',rs), G('&#8963;',rc)];
-  var row2 = isMac
-    ? [G('&#8984;',rg), G('&#8997;',ra)]
-    : [G('&#8862;',rg), G(altSVG(),ra)];
+  var connected=o.connected!==false, batt=o.batt||75;
   return '<div class="display"><div class="di">'
     + '<div class="ts"><div class="ts-a">'+wifiSvg(connected)+battUnit(batt,false)+'</div></div>'
-    + '<div class="ms"><div class="ms-row r1">'+row1.join('')+'</div><div class="ms-row r2">'+row2.join('')+'</div></div>'
-    + '<div class="bs"></div></div></div>';
+    + '</div></div>';
 }
 
 function row(lbl,html){
@@ -158,17 +118,15 @@ function row(lbl,html){
 }
 
 var left = [
-  row('Qwerty\nBT 0 connected\n75% base layer', L({layer:'Base',activeLayer:0})),
-  row('Qwerty (Mac mods)\nBT 0 90%\nlayer 2 active', L({batt:90,isMac:true,layer:'Base',activeLayer:2})),
-  row('Num\nBT 0 50%\nlayer 3 active', L({batt:50,layer:'Num',activeLayer:3})),
-  row('Sym\nBT 2 connecting\n(live 500ms anim)\n80% layer 5', L({btState:'connecting',btProfile:2,batt:80,layer:'Sym',activeLayer:5})),
-  row('Func\nBT 0 45% charging\nlayer 6 active', L({batt:45,charging:true,layer:'Func',activeLayer:6})),
+  row('Qwerty (Win or Mac)\nBT 0 connected\n75% base layer', L({layer:'Base'})),
+  row('Num\nBT 0 50%\nlayer 3 active', L({batt:50,layer:'Num'})),
+  row('Sym\nBT 2 connecting\n(live 500ms anim)\n80% layer 5', L({btState:'connecting',btProfile:2,batt:80,layer:'Sym'})),
+  row('Func\nBT 0 45% charging\nlayer 6 active', L({batt:45,charging:true,layer:'Func'})),
+  row('Admin (NUM+FUNC)\nBT 0 60%\nlayer 7 active', L({batt:60,layer:'Admin'})),
 ];
 
 var right = [
-  row('Qwerty (Win)\nConnected 80%\nno mods', R({batt:80})),
-  row('Qwerty (Win)\nConnected 65%\nR-Shift held', R({batt:65,mods:[0,0,0,1]})),
-  row('Qwerty (Mac)\nConnected 70%\nR-GUI held', R({batt:70,isMac:true,mods:[0,1,0,0]})),
+  row('Connected 80%\n(middle and bottom\nalways blank)', R({batt:80})),
   row('Disconnected 14%', R({connected:false,batt:14})),
 ];
 

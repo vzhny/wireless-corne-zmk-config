@@ -6,7 +6,6 @@
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/battery_state_changed.h>
 #include <zmk/events/usb_conn_state_changed.h>
-#include <zmk/events/position_state_changed.h>
 #include <zmk/events/ble_active_profile_changed.h>
 #include <zmk/keymap.h>
 #include <zmk/battery.h>
@@ -14,12 +13,10 @@
 #include <zmk/ble.h>
 
 #include "util.h"
-#include "fonts/pixel_operator_mono.h"
 #include "fonts/pixel_operator_mono_large.h"
-#include "fonts/icon_font.h"
+#include "fonts/pixel_operator_mono_xl.h"
 #include "fonts/status_icon_font.h"
 #include "blecorne_central.h"
-#include "split/modifier_sync.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -43,8 +40,8 @@ static struct central_state widget_state;
  * full offset/strip mapping. canvas_top lands in the strip that only
  * exposes its first 24 rows; canvas_mid and canvas_bot get their full 68.
  */
-static lv_obj_t *canvas_top;    /* x=-44 -> bottom strip, 24px visible (layer name) */
-static lv_obj_t *canvas_mid;    /* x=24  -> middle strip (modifiers)                */
+static lv_obj_t *canvas_top;    /* x=-44 -> bottom strip, 24px visible (blank)      */
+static lv_obj_t *canvas_mid;    /* x=24  -> middle strip (layer name)               */
 static lv_obj_t *canvas_bot;    /* x=92 (TOP_RIGHT) -> top strip (status)           */
 
 static uint8_t cbuf_top[CANVAS_BUF_SIZE];
@@ -53,9 +50,8 @@ static uint8_t cbuf_bot[CANVAS_BUF_SIZE];
 
 /* ── Layer names ─────────────────────────────────────────────────────── */
 
-/* Layers 0-2 (Qwerty Win/Win-profile/Mac) all show "Base" - the modifier
- * row's icons-vs-text already shows Win vs Mac (see render_mod_canvas), so
- * this name doesn't need to carry that distinction too. */
+/* Layers 0-2 (Qwerty Win/Win-profile/Mac) all show "Base" - the display
+ * doesn't distinguish the Win vs Mac profile. */
 static const char *layer_names[] = {
     "Base", "Base", "Base",
     /* Order must match blecorne.keymap's layer indices - Admin (7) has to
@@ -69,42 +65,6 @@ static const char *layer_names[] = {
 static const char *get_layer_name(uint8_t idx) {
     return (idx < LAYER_NAME_COUNT) ? layer_names[idx] : "???";
 }
-
-/* LAYER_QWERTY_MAC (blecorne_central.h) determines the mac/win display flag
- * directly from whether that specific profile layer is toggled on, instead
- * of zmk_keymap_highest_layer_active(). The latter breaks the moment
- * NUM/NAV/SYM/FUNC/ADMIN stack on top of a profile (their layer indices are
- * all higher than any profile's), which made the mod row silently fall back
- * to showing Win glyphs while e.g. ADMIN was held on top of Qwerty Mac -
- * confirmed on real hardware. */
-static bool is_mac_active(void) {
-    return zmk_keymap_layer_active(LAYER_QWERTY_MAC);
-}
-
-/* ── HID modifier masks ──────────────────────────────────────────────── *
- * Standard HID modifier byte layout - bits 0-3 are the left-hand mods this
- * half's own display reads, bits 4-7 are the right-hand mods forwarded to
- * the peripheral (see modifier_sync_central.c). */
-
-#define MOD_LCTRL  BIT(0)
-#define MOD_LSHIFT BIT(1)
-#define MOD_LALT   BIT(2)
-#define MOD_LGUI   BIT(3)
-#define MOD_RCTRL  BIT(4)
-#define MOD_RSHIFT BIT(5)
-#define MOD_RALT   BIT(6)
-#define MOD_RGUI   BIT(7)
-
-/* What the mod cells actually display - built entirely from watching raw
- * key positions (see the shadow-tracking section below), not from real HID
- * mod state. Every modifier in this keymap is bound through one of the
- * tracked hold-tap positions (homerow or thumb), so this alone is a
- * complete picture of what should be lit - and it sidesteps a real bug
- * where relying on the real HID snapshot (zmk_hid_get_explicit_mods()) left
- * a cell stuck lit after releasing a modifier held in isolation, with no
- * other key pressed to force a resync. Display-only - never read back into
- * actual HID output. */
-static uint8_t shadow_mods = 0;
 
 /* ── Flash state ─────────────────────────────────────────────────────── *
  * One 500ms heartbeat drives every blink on this half: the BT icon while
@@ -145,50 +105,6 @@ static void draw_status_icon(lv_obj_t *canvas, int x, int y, int w, const char *
     dsc.align = align;
     dsc.opa   = active ? LV_OPA_COVER : LV_OPA_40;
     canvas_draw_text(canvas, x, y, w, &dsc, icon);
-}
-
-/* ── Modifier cell ─────────────────────────────────────────────────────
- * Each modifier key is a MOD_BOX_W x MOD_BOX_H box with a 1px rounded
- * border, always visible. Pressed ("active") fills the box with the
- * foreground color and inverts the icon/text color inside it - a "lit
- * key" look. */
-
-#define MOD_BOX_W 30
-#define MOD_BOX_H 26
-
-static void draw_mod_box(lv_obj_t *canvas, int x, int y, bool active) {
-    lv_draw_rect_dsc_t dsc;
-    lv_draw_rect_dsc_init(&dsc);
-    dsc.radius       = 6;
-    dsc.border_width = 1;
-    dsc.border_color = LVGL_FOREGROUND;
-    dsc.border_opa   = LV_OPA_COVER;
-    dsc.bg_color     = LVGL_FOREGROUND;
-    dsc.bg_opa       = active ? LV_OPA_COVER : LV_OPA_TRANSP;
-    canvas_draw_rect(canvas, x, y, MOD_BOX_W, MOD_BOX_H, &dsc);
-}
-
-/* icon_font's glyphs don't share a common visual center: LV_TEXT_ALIGN_CENTER
- * centers by the font's shared advance width, not each glyph's actual ink,
- * so it visibly mis-centers these. `icon_w`/`icon_ofs_x` (from icon_font.h's
- * ICON_*_W/ICON_*_OFS_X) are the real per-glyph ink width and left bearing,
- * used to compute the correct centered x by hand instead. */
-static void draw_mod_icon(lv_obj_t *canvas, int x, int y, const char *icon, int icon_w,
-                          int icon_ofs_x, bool active) {
-    draw_mod_box(canvas, x, y, active);
-    lv_draw_label_dsc_t dsc;
-    init_label_dsc(&dsc, active ? LVGL_BACKGROUND : LVGL_FOREGROUND, &icon_font);
-    dsc.align = LV_TEXT_ALIGN_LEFT;
-    int content_x = x + (MOD_BOX_W - icon_w) / 2 - icon_ofs_x;
-    canvas_draw_text(canvas, content_x, y + 3, MOD_BOX_W, &dsc, icon);
-}
-
-static void draw_mod_text(lv_obj_t *canvas, int x, int y, const char *text, bool active) {
-    draw_mod_box(canvas, x, y, active);
-    lv_draw_label_dsc_t dsc;
-    init_label_dsc(&dsc, active ? LVGL_BACKGROUND : LVGL_FOREGROUND, &pixel_operator_mono);
-    dsc.align = LV_TEXT_ALIGN_CENTER;
-    canvas_draw_text(canvas, x, y + 6, MOD_BOX_W, &dsc, text);
 }
 
 /* Discrete battery level -> Font Awesome battery glyph. <=5% is handled by
@@ -269,61 +185,34 @@ static void render_status_canvas(struct central_state *state) {
     rotate_canvas(canvas_bot);
 }
 
-/* canvas_mid: modifier row. Two rows of bordered cells - Shift+Ctrl at
- * y=6, GUI+Alt at y=38, columns at x=4/x=36.
+/* canvas_mid: layer name, centered in the full 68px canvas, plus 1px rules
+ * at y=0 and y=67 as section separators. This canvas has no hardware
+ * truncation, so the rules land exactly on the physical boundaries with the
+ * status strip above and the blank strip below.
  *
- * Mac shows all four as icons (real keycap symbols). Windows shows Shift
- * as an icon but Ctrl/GUI/Alt as text ("Ctl"/"Win"/"Alt") since that's
- * what's actually printed on a Windows keycap - this asymmetry is
- * intentional, not a gap to fill in later. "Ctl" (not "Ctrl") because
- * "Ctrl" wraps to a second line at this box/font size. */
-static void render_mod_canvas(struct central_state *state) {
+ * y=24: pixel_operator_mono_xl's line_height is 20 and every layer name is
+ * cap-height only (14px, no descenders), so the ink spans rows 27-40 -
+ * centered in 68. */
+static void render_layer_canvas(struct central_state *state) {
     clear_canvas(canvas_mid);
 
-    /* This canvas uses its full 68px budget with no truncation, so a rule
-     * at y=0 and y=67 lands exactly on the physical boundary with the
-     * status strip above and layer strip below. */
     lv_draw_rect_dsc_t rule_dsc;
     init_rect_dsc(&rule_dsc, LVGL_FOREGROUND);
     canvas_draw_rect(canvas_mid, 0, 0, CANVAS_SIZE, 1, &rule_dsc);
     canvas_draw_rect(canvas_mid, 0, CANVAS_SIZE - 1, CANVAS_SIZE, 1, &rule_dsc);
 
-    bool is_mac = is_mac_active();
-    uint32_t mods = shadow_mods;
-
-    bool shift_active = !!(mods & MOD_LSHIFT);
-    bool ctrl_active  = !!(mods & MOD_LCTRL);
-    bool gui_active   = !!(mods & MOD_LGUI);
-    bool alt_active   = !!(mods & MOD_LALT);
-
-    int x0 = 4, x1 = 36, y0 = 6, y1 = 38;
-
-    draw_mod_icon(canvas_mid, x0, y0, ICON_SHIFT, ICON_SHIFT_W, ICON_SHIFT_OFS_X, shift_active);
-    if (is_mac) {
-        draw_mod_icon(canvas_mid, x1, y0, ICON_CTRL, ICON_CTRL_W, ICON_CTRL_OFS_X, ctrl_active);
-        draw_mod_icon(canvas_mid, x0, y1, ICON_CMD,  ICON_CMD_W,  ICON_CMD_OFS_X,  gui_active);
-        draw_mod_icon(canvas_mid, x1, y1, ICON_OPT,  ICON_OPT_W,  ICON_OPT_OFS_X,  alt_active);
-    } else {
-        draw_mod_text(canvas_mid, x1, y0, "Ctl", ctrl_active);
-        draw_mod_text(canvas_mid, x0, y1, "Win",  gui_active);
-        draw_mod_text(canvas_mid, x1, y1, "Alt",  alt_active);
-    }
+    lv_draw_label_dsc_t lbl;
+    init_label_dsc(&lbl, LVGL_FOREGROUND, &pixel_operator_mono_xl);
+    lbl.align = LV_TEXT_ALIGN_CENTER;
+    canvas_draw_text(canvas_mid, 0, 24, CANVAS_SIZE, &lbl,
+                     get_layer_name(state->active_layer));
 
     rotate_canvas(canvas_mid);
 }
 
-/* canvas_top: layer name, centered. y=5 rather than vertically centered in
- * the full 68px canvas, since only rows 0-23 of this canvas actually reach
- * the screen (see the canvas_top comment above). */
-static void render_layer_canvas(struct central_state *state) {
+/* canvas_top (24px visible) - unused, cleared once at init. */
+static void render_blank_canvas(void) {
     clear_canvas(canvas_top);
-
-    lv_draw_label_dsc_t lbl;
-    init_label_dsc(&lbl, LVGL_FOREGROUND, &pixel_operator_mono_large);
-    lbl.align = LV_TEXT_ALIGN_CENTER;
-    canvas_draw_text(canvas_top, 0, 5, CANVAS_SIZE, &lbl,
-                     get_layer_name(state->active_layer));
-
     rotate_canvas(canvas_top);
 }
 
@@ -334,16 +223,10 @@ static void status_render_cb(struct k_work *work) {
 }
 static K_WORK_DEFINE(status_render_work, status_render_cb);
 
-static void mod_render_cb(struct k_work *work) {
-    render_mod_canvas(&widget_state);
-}
-static K_WORK_DEFINE(mod_render_work, mod_render_cb);
-
-static void layer_mod_render_cb(struct k_work *work) {
+static void layer_render_cb(struct k_work *work) {
     render_layer_canvas(&widget_state);
-    render_mod_canvas(&widget_state); /* layer change can flip Mac vs Win glyph order */
 }
-static K_WORK_DEFINE(layer_mod_render_work, layer_mod_render_cb);
+static K_WORK_DEFINE(layer_render_work, layer_render_cb);
 
 static inline void display_submit(struct k_work *work) {
     if (zmk_display_is_initialized()) {
@@ -356,112 +239,6 @@ static inline void display_submit(struct k_work *work) {
 static void flash_work_cb(struct k_work *work) {
     flash_on = !flash_on;
     display_submit(&status_render_work);
-}
-
-/* ── Modifier shadow-tracking (display-only) ──────────────────────────── *
- *
- * Real HID mod state only updates once ZMK's hold-tap logic actually
- * decides tap vs hold, which for "balanced" flavor can lag well behind the
- * physical press (see CLAUDE.md's Homerow mods section for why). This
- * watches raw key presses on the known modifier positions directly and
- * manually lights up the display after that position's own
- * tapping-term-ms, without waiting for the real decision - approximating
- * "hold long enough and it's obviously a hold" the same way a person
- * would judge it by eye.
- *
- * This is a deliberate approximation, not a substitute for the real HID
- * state: it only ever adds bits to the display (shadow_mods), never to
- * actual HID output, and it can disagree with the real decision - e.g. a
- * quick type-through that resolves HOLD via an interrupt release before
- * this timer fires won't light up here, and a position that's also part
- * of a combo (see blecorne.keymap) can show a slightly late shadow light
- * if that combo doesn't end up firing. Both are accepted trade-offs for
- * getting real-time feedback out of a fundamentally non-instant mechanism.
- *
- * Position numbers and which logical mod each one is come straight from
- * blecorne.keymap's homerow/thumb bindings - if those ever move, update
- * this table too. */
-
-struct shadow_mod_slot {
-    uint32_t position;
-    uint32_t tapping_term_ms;
-    bool     swaps_with_mac; /* true for the two Ctrl/Gui-swap positions per hand */
-    uint8_t  bit_win;        /* bit when !swaps_with_mac, or when swaps_with_mac && !is_mac */
-    uint8_t  bit_mac;        /* bit when swaps_with_mac && is_mac (unused otherwise) */
-    bool     held;
-    bool     fired;
-    uint8_t  applied_bit;
-    struct k_work_delayable work;
-};
-
-static void shadow_slot_timeout(struct k_work *work);
-
-static struct shadow_mod_slot shadow_slots[] = {
-    /* Left homerow: A/S/D (Ctrl/Gui swap with Mac layers, Alt fixed) */
-    { .position = 13, .tapping_term_ms = 280, .swaps_with_mac = true,  .bit_win = MOD_LCTRL, .bit_mac = MOD_LGUI },
-    { .position = 14, .tapping_term_ms = 280, .swaps_with_mac = true,  .bit_win = MOD_LGUI,  .bit_mac = MOD_LCTRL },
-    { .position = 15, .tapping_term_ms = 280, .swaps_with_mac = false, .bit_win = MOD_LALT },
-    /* Right homerow: K/L/; (mirrors the left hand's swap) */
-    { .position = 20, .tapping_term_ms = 280, .swaps_with_mac = false, .bit_win = MOD_RALT },
-    { .position = 21, .tapping_term_ms = 280, .swaps_with_mac = true,  .bit_win = MOD_RGUI,  .bit_mac = MOD_RCTRL },
-    { .position = 22, .tapping_term_ms = 280, .swaps_with_mac = true,  .bit_win = MOD_RCTRL, .bit_mac = MOD_RGUI },
-    /* Thumb shift keys - never swap with Mac/Win */
-    { .position = 38, .tapping_term_ms = 225, .swaps_with_mac = false, .bit_win = MOD_LSHIFT },
-    { .position = 39, .tapping_term_ms = 225, .swaps_with_mac = false, .bit_win = MOD_RSHIFT },
-};
-#define SHADOW_SLOT_COUNT ARRAY_SIZE(shadow_slots)
-
-static void shadow_slot_timeout(struct k_work *work) {
-    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
-    struct shadow_mod_slot *slot = CONTAINER_OF(dwork, struct shadow_mod_slot, work);
-    if (!slot->held) {
-        return; /* released before the timer fired - a tap, not a hold */
-    }
-    bool is_mac = is_mac_active();
-    slot->applied_bit = (slot->swaps_with_mac && is_mac) ? slot->bit_mac : slot->bit_win;
-    slot->fired = true;
-    shadow_mods |= slot->applied_bit;
-    display_submit(&mod_render_work);
-    modifier_sync_notify_mods_changed();
-}
-
-static int position_event_cb(const zmk_event_t *eh) {
-    const struct zmk_position_state_changed *ev = as_zmk_position_state_changed(eh);
-    if (ev == NULL) {
-        return ZMK_EV_EVENT_BUBBLE;
-    }
-    for (size_t i = 0; i < SHADOW_SLOT_COUNT; i++) {
-        struct shadow_mod_slot *slot = &shadow_slots[i];
-        if (slot->position != ev->position) {
-            continue;
-        }
-        if (ev->state) {
-            slot->held  = true;
-            slot->fired = false;
-            k_work_schedule(&slot->work, K_MSEC(slot->tapping_term_ms));
-        } else {
-            slot->held = false;
-            k_work_cancel_delayable(&slot->work);
-            if (slot->fired) {
-                slot->fired = false;
-                shadow_mods &= ~slot->applied_bit;
-                display_submit(&mod_render_work);
-                modifier_sync_notify_mods_changed();
-            }
-        }
-        break;
-    }
-    return ZMK_EV_EVENT_BUBBLE;
-}
-
-ZMK_LISTENER(central_position, position_event_cb);
-ZMK_SUBSCRIPTION(central_position, zmk_position_state_changed);
-
-/* Shadow-tracked mods, 8-bit HID shape (bits 0-3 left, 4-7 right) - used by
- * modifier_sync_central.c to forward the right-hand nibble to the
- * peripheral. */
-uint8_t blecorne_central_get_display_mods(void) {
-    return shadow_mods;
 }
 
 /* ── Event listeners ─────────────────────────────────────────────────── */
@@ -483,7 +260,7 @@ static int layer_event_cb(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
     widget_state.active_layer = zmk_keymap_highest_layer_active();
-    display_submit(&layer_mod_render_work);
+    display_submit(&layer_render_work);
     return ZMK_EV_EVENT_BUBBLE;
 }
 
@@ -539,13 +316,9 @@ int blecorne_central_widget_init(struct blecorne_central_widget *widget,
 
     k_timer_start(&flash_timer, K_MSEC(500), K_MSEC(500));
 
-    for (size_t i = 0; i < SHADOW_SLOT_COUNT; i++) {
-        k_work_init_delayable(&shadow_slots[i].work, shadow_slot_timeout);
-    }
-
     render_status_canvas(&widget_state);
-    render_mod_canvas(&widget_state);
     render_layer_canvas(&widget_state);
+    render_blank_canvas();
 
     return 0;
 }

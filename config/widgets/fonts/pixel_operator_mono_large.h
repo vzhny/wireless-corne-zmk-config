@@ -2,9 +2,8 @@
 
 #include <lvgl.h>
 
-/* Same source as pixel_operator_mono.h (PixelOperatorMono.ttf, --bpp 1),
- * converted a second time at --size 20 (10px/char) instead of --size 16
- * (8px/char) - used for anything meant to read at a glance: the layer
- * name, the peripheral's layout name, and the status row's BT profile/
- * battery % text. */
+/* Converted from PixelOperatorMono.ttf via lv_font_conv (--bpp 1 --size 20,
+ * ASCII 0x20-0x7F, 10px/char) - a purpose-built pixel font, crisp on this
+ * project's strictly monochrome Sharp Memory LCD. Used for the status row's
+ * BT profile/battery % text. */
 extern const lv_font_t pixel_operator_mono_large;
